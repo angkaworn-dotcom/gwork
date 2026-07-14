@@ -61,12 +61,6 @@ No file = defaults · unparseable config = every gate fails loud, never a silent
 
 **Language:** tooling and docs are English; your data is yours — log entries, gotchas, INDEX content, and commit descriptions work in any language (the scripts parse structure, not prose).
 
-## Tested against real data (Osaki Hub Evo, 2026-07)
-
-- migrate: 193 entries → 3 shards + INDEX with 137 modules · tasklog-check green
-- hook: injects BC+entries on first touch of a module · silent on second touch · silent outside modules
-- Bug hunt 2026-07-14: merge/revert commits pass the hook, path matching is case-insensitive on Windows, wrong-shard links are caught, seq ≥10 sorts correctly
-
 ## Phase 2 (waiting for evidence from real usage)
 
 - PreToolUse blocking `git commit` in subagent contexts

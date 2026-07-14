@@ -21,7 +21,17 @@ Deterministic rules enforced by git hooks and Claude Code hooks, not prompts. **
 git clone https://github.com/angkaworn-dotcom/gwork.git ~/.claude/skills/gwork
 ```
 
-แล้วสั่งใน Claude Code ว่า **"ติดตั้ง gwork"** ใน repo เป้าหมาย — ขั้นตอนเต็มอยู่ใน [SKILL.md](SKILL.md) จุดที่ต้องปรับต่อ project (module regex, pre-push command, log format) อยู่ใน [ADAPT.md](ADAPT.md)
+แล้วสั่งใน Claude Code ว่า **"ติดตั้ง gwork"** ใน repo เป้าหมาย — ขั้นตอนเต็มอยู่ใน [SKILL.md](SKILL.md) การปรับกฎต่อ project อยู่ใน [ADAPT.md](ADAPT.md)
+
+### Slash commands (copy `commands/*.md` → `~/.claude/commands/`)
+
+| Command | ทำอะไร |
+|---|---|
+| `/gwork` | ติดตั้งคิทเข้า repo ปัจจุบัน |
+| `/gwork-log` | ปิดงาน: ลง entry + update INDEX ในคอมมิตเดียว |
+| `/gwork-check` | ตรวจสุขภาพ task-log แล้วช่วยแก้ถ้าแดง |
+| `/gwork-rule <กฎ>` | เพิ่ม/แก้กฎ — จำแนกให้เองว่าลง gwork.json / โค้ด / CLAUDE.md |
+| `/gwork-status` | รายงานสถานะติดตั้ง + config + สุขภาพ log |
 
 ## ติดตั้งมือ (ไม่ใช้ skill)
 

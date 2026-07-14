@@ -36,13 +36,14 @@ description: Install the gwork discipline kit (git pre-push/commit-msg hooks, ta
 3. **task-log:**
    - มี log เดิม (format `## YYYY-MM-DD — title`): `node scripts/migrate.mjs "<log file>"` → ได้ `task-log/` (ไม่แตะไฟล์ต้นฉบับ)
    - ไม่มี: สร้าง `task-log/INDEX.md` (header ตารางเปล่า `| Module | Entries (ล่าสุดก่อน) | BC | Gotcha (≤1 บรรทัด) |`) + `task-log/<YYYY-MM>.md` เปล่า
-4. **PreToolUse hook (ทำครั้งเดียวต่อเครื่อง):** copy `hooks/tasklog-gotcha.mjs` → `~/.claude/hooks/` แล้วเพิ่มใน `~/.claude/settings.json` (merge เข้า hooks เดิม อย่าทับ):
+4. **Slash commands (ทำครั้งเดียวต่อเครื่อง):** `cp <SKILL>/commands/*.md ~/.claude/commands/` → ได้ `/gwork-log` `/gwork-check` `/gwork-rule` `/gwork-status`
+5. **PreToolUse hook (ทำครั้งเดียวต่อเครื่อง):** copy `hooks/tasklog-gotcha.mjs` → `~/.claude/hooks/` แล้วเพิ่มใน `~/.claude/settings.json` (merge เข้า hooks เดิม อย่าทับ):
    ```json
    "PreToolUse": [ { "matcher": "Edit|Write|MultiEdit",
      "hooks": [{ "type": "command", "command": "node \"C:/Users/<USER>/.claude/hooks/tasklog-gotcha.mjs\"" }] } ]
    ```
    hook หา `task-log/INDEX.md` เองโดยไต่จาก cwd — ใช้ร่วมได้ทุก repo ที่ลงคิท
-5. **CLAUDE.md:** ใช้ `CLAUDE.template.md` เป็นโครง — เติม `<PROJECT_NAME>`, commands, SSOT ของ repo แล้ว**ย้าย gotcha ยาวๆ ใน CLAUDE.md เดิมเข้า Known Bug Classes (BC-xxx บรรทัดเดียว)** เก็บ architecture/project specifics เดิมไว้ ตัดเฉพาะกฎที่ hook คุมแล้ว
+6. **CLAUDE.md:** ใช้ `CLAUDE.template.md` เป็นโครง — เติม `<PROJECT_NAME>`, commands, SSOT ของ repo แล้ว**ย้าย gotcha ยาวๆ ใน CLAUDE.md เดิมเข้า Known Bug Classes (BC-xxx บรรทัดเดียว)** เก็บ architecture/project specifics เดิมไว้ ตัดเฉพาะกฎที่ hook คุมแล้ว
 
 ## ตรวจหลังติดตั้ง
 

@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
  * tasklog-gotcha.mjs — PreToolUse hook (Edit|Write|MultiEdit)
- * AI ไม่ต้องจำว่าต้อง lookup INDEX — hook ทำแทนแบบ deterministic:
- *   1. อ่าน file_path ที่กำลังจะแก้ → map เป็น module key (regex เดียวกับ migrate.mjs)
- *   2. เปิด task-log/INDEX.md หาแถวของ module นั้น
- *   3. ถ้ามี gotcha/BC → inject เข้า context ผ่าน additionalContext
- *   4. จำ per (session, module) — module เดิมเตือนครั้งเดียวพอ กันสแปม context
+ * The AI never has to remember to look up INDEX — the hook does it deterministically:
+ *   1. read the file_path about to be edited → map to a module key (same rules as migrate.mjs)
+ *   2. open task-log/INDEX.md and find that module's row
+ *   3. if it has a gotcha/BC → inject into context via additionalContext
+ *   4. remember per (session, module) — warn once per module, no context spam
  *
  * settings.json:
  *   "hooks": { "PreToolUse": [ { "matcher": "Edit|Write|MultiEdit",
@@ -29,7 +29,7 @@ const cwd = data?.cwd ?? process.cwd()
 const sessionId = data?.session_id ?? 'nosession'
 if (!filePath) ok()
 
-// --- หา repo root ที่มี task-log/INDEX.md (ไต่ขึ้นจาก cwd) ---
+// --- find the repo root that holds task-log/INDEX.md (walk up from cwd) ---
 let root = cwd, indexPath = ''
 for (let i = 0; i < 6; i++) {
   const p = join(root, 'task-log', 'INDEX.md')
@@ -38,8 +38,8 @@ for (let i = 0; i < 6; i++) {
 }
 if (!indexPath) ok()
 
-// --- module key: อ่านกฎจาก gwork.json ที่ root ถ้ามี — user แก้กฎได้โดยไม่แตะโค้ด ---
-// strip root prefix แบบ case-insensitive — Windows drive letter อาจมาคนละ case (C:/ vs c:/)
+// --- module key: rules come from gwork.json at the root if present — users edit rules without touching code ---
+// strip the root prefix case-insensitively — on Windows the drive letter case may differ (C:/ vs c:/)
 const fpNorm = filePath.replace(/\\/g, '/')
 const rootNorm = root.replace(/\\/g, '/') + '/'
 const rel = fpNorm.toLowerCase().startsWith(rootNorm.toLowerCase())
@@ -54,12 +54,12 @@ const DEFAULT_MODULES = [
   { pattern: '^(prisma|hooks|scripts)/', name: '$1' },
 ]
 let cfg = {}
-try { cfg = JSON.parse(readFileSync(join(root, 'gwork.json'), 'utf8')) } catch { /* ไม่มี config = ใช้ default */ }
+try { cfg = JSON.parse(readFileSync(join(root, 'gwork.json'), 'utf8')) } catch { /* no config = defaults */ }
 const moduleRules = Array.isArray(cfg.modules) && cfg.modules.length ? cfg.modules : DEFAULT_MODULES
 const moduleOf = p => {
   for (const r of moduleRules) {
     let m
-    try { m = p.match(new RegExp(r.pattern)) } catch { continue } // regex เสียใน config → ข้าม ไม่ล้ม hook
+    try { m = p.match(new RegExp(r.pattern)) } catch { continue } // bad regex in config → skip, never crash the hook
     if (m) return r.name.replace(/\$(\d)/g, (_, i) => m[+i] ?? '')
   }
   return null
@@ -67,7 +67,7 @@ const moduleOf = p => {
 const mod = moduleOf(rel)
 if (!mod) ok()
 
-// --- กันสแปม: module เดิมใน session เดิม inject ครั้งเดียว ---
+// --- anti-spam: inject once per (session, module) ---
 const stateDir = join(tmpdir(), 'tasklog-gotcha')
 mkdirSync(stateDir, { recursive: true })
 const stateFile = join(stateDir, `${sessionId}.json`)
@@ -75,7 +75,7 @@ let seen = {}
 try { seen = JSON.parse(readFileSync(stateFile, 'utf8')) } catch { /* fresh */ }
 if (seen[mod]) ok()
 
-// --- lookup แถวใน INDEX ---
+// --- look up the module's row in INDEX ---
 const index = readFileSync(indexPath, 'utf8')
 const row = index.split('\n').find(l => {
   const c = l.split('|').map(s => s.trim())
@@ -92,9 +92,9 @@ seen[mod] = true
 writeFileSync(stateFile, JSON.stringify(seen))
 
 const msg = [
-  `[task-log] กำลังแก้ module "${mod}" — ประวัติที่ต้องรู้ก่อนแตะ:`,
-  hasBC ? `- Bug classes: ${bc} (รายละเอียดใน CLAUDE.md)` : null,
+  `[task-log] Editing module "${mod}" — history you must know before touching it:`,
+  hasBC ? `- Bug classes: ${bc} (details in CLAUDE.md)` : null,
   hasGotcha ? `- Gotcha: ${gotcha}` : null,
-  `- Entries ที่เกี่ยว (เปิดเฉพาะที่จำเป็น อย่าอ่าน shard ทั้งไฟล์): ${entries}`,
+  `- Related entries (open only what you need, never the whole shard): ${entries}`,
 ].filter(Boolean).join('\n')
 ok(msg)

@@ -1,8 +1,8 @@
 #!/bin/sh
-# pre-push — block จริง ไม่ใช่ขอร้อง (ติดตั้ง: git config core.hooksPath githooks)
-# แก้รายการ check ได้ที่ gwork.json → prepush (array ของ command — รันตามลำดับ ตัวไหน fail = push ไม่ออก)
+# pre-push — a real block, not a polite request (install: git config core.hooksPath githooks)
+# Edit the check list at gwork.json → prepush (array of commands — run in order, any failure blocks the push)
 set -e
-CMDS=$(node -e "let c={};try{c=require(process.cwd()+'/gwork.json')}catch(e){if(e.code!=='MODULE_NOT_FOUND'){console.error('pre-push: gwork.json parse ไม่ได้ — '+e.message);process.exit(1)}};(Array.isArray(c.prepush)&&c.prepush.length?c.prepush:['npx tsc --noEmit','node scripts/tasklog-check.mjs']).forEach(x=>console.log(x))")
+CMDS=$(node -e "let c={};try{c=require(process.cwd()+'/gwork.json')}catch(e){if(e.code!=='MODULE_NOT_FOUND'){console.error('pre-push: cannot parse gwork.json — '+e.message);process.exit(1)}};(Array.isArray(c.prepush)&&c.prepush.length?c.prepush:['npx tsc --noEmit','node scripts/tasklog-check.mjs']).forEach(x=>console.log(x))")
 printf '%s\n' "$CMDS" |
 while IFS= read -r cmd; do
   [ -n "$cmd" ] || continue

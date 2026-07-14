@@ -1,74 +1,77 @@
 # CLAUDE.md — <PROJECT_NAME>
 
-<!-- Template จาก project-kit — หลักการ: กฎที่ check ได้แบบ deterministic ถูกย้ายไป hook/script แล้ว
-     ไฟล์นี้เหลือเฉพาะสิ่งที่ต้องใช้ดุลพินิจ — ยิ่งสั้น model ยิ่งไม่หลุด -->
+<!-- Template from gwork — principle: every deterministically checkable rule has been moved to hooks/scripts.
+     This file keeps only what requires judgment — the shorter it is, the less the model drifts. -->
 
-## คุมด้วยระบบแล้ว (อย่าเสียโทเคนอธิบายซ้ำ — แค่รู้ว่ามี)
+## Enforced by the system (don't waste tokens re-explaining — just know it exists)
 
-| กฎ | บังคับโดย | ถ้าฝืน |
+| Rule | Enforced by | If violated |
 |---|---|---|
-| tsc ผ่านก่อน push | `.githooks/pre-push` | push ไม่ออก |
-| commit format `type: description` | `.githooks/commit-msg` | commit ไม่ผ่าน |
-| ลง task-log แล้วต้อง update INDEX | `scripts/tasklog-check.mjs` (ใน pre-push) | push ไม่ออก |
-| gotcha ≤ 1 บรรทัด / มี BC แล้วห้ามแบก text ยาว | tasklog-check | push ไม่ออก |
-| อ่าน gotcha ก่อนแตะ module | PreToolUse hook inject ให้อัตโนมัติ | — (ไม่ต้องทำอะไร) |
+| tsc passes before push | `githooks/pre-push` | push blocked |
+| commit format `type: description` | `githooks/commit-msg` | commit rejected |
+| logging work requires updating INDEX | `scripts/tasklog-check.mjs` (in pre-push) | push blocked |
+| gotcha ≤ 1 line / no long text once a BC exists | tasklog-check | push blocked |
+| read gotchas before touching a module | PreToolUse hook injects automatically | — (nothing to do) |
 
-## Task log (task-log/ — dict)
+Rules are configurable at `gwork.json` in the repo root — see gwork's ADAPT.md.
 
-- **Lookup:** hook inject gotcha ให้เองตอนแก้ไฟล์ — ถ้าต้องการบริบทเพิ่ม เปิด**เฉพาะ entry ที่ INDEX ชี้** ห้ามอ่าน shard ทั้งไฟล์
-- **ปิดงานทุกครั้ง ห้ามรวมยอดทีหลัง:** เขียน entry ลง `task-log/<YYYY-MM>.md` — anchor `<a id="YYYY-MM-DD-n"></a>` + ที่มา / บั๊ก+แก้+commit / Decision / Gotcha / Validation / **ผลกระทบงานก่อนหน้า** (ไม่มี = เขียนว่าไม่มี) → update แถว INDEX ของทุก module ที่แตะ **ในคอมมิตเดียวกัน** (pre-push จับถ้าลืม)
-- **Promote → BC (2 แกน):** gotcha ซ้ำ ≥2 entries **หรือ** destructive ครั้งเดียว (ทับไฟล์/ข้อมูลหาย/deploy พัง) → เพิ่ม BC-xxx ในไฟล์นี้ทันที แล้วแถว INDEX เหลือแค่เลข BC
+## Task log (task-log/ — a dict, not a diary)
+
+- **Lookup:** the hook injects gotchas automatically when you edit files — if you need more context, open **only the entries INDEX points to**, never a whole shard
+- **Close out every task, never batch later:** write an entry in `task-log/<YYYY-MM>.md` — anchor `<a id="YYYY-MM-DD-n"></a>` + context / bug+fix+commit / Decision / Gotcha / Validation / **impact on prior work** (none = say "none") → update the INDEX row of every touched module **in the same commit** (pre-push catches it if you forget)
+- **Promote → BC (two triggers):** a gotcha repeated across ≥2 entries **or** one destructive incident (overwritten files / lost data / broken deploy) → add BC-xxx to this file immediately and reduce the INDEX row to just the BC number
+- Entries may be written in any language — the tooling only parses structure, not prose
 
 ## Known Bug Classes
 
-<!-- ย้าย/เพิ่ม BC ของ project นี้ตรงนี้ — 1 บรรทัดต่อ BC: รหัส · อาการ · กันยังไง -->
-| BC | Pattern | กันยังไง |
+<!-- Move/add this project's BCs here — one line per BC: code · symptom · prevention -->
+| BC | Pattern | Prevention |
 |---|---|---|
-| BC-001 | <ตัวอย่าง: client import ไฟล์ที่ลาก prisma เข้า bundle> | <import จาก client-safe entry เท่านั้น> |
+| BC-001 | <example: client imports a file that drags prisma into the bundle> | <import from client-safe entries only> |
 
-## Behavioral (ดุลพินิจ — automate ไม่ได้)
+## Behavioral (judgment — cannot be automated)
 
 **Think before coding. Don't assume. Don't hide confusion. Surface tradeoffs.**
 
-1. **Simplicity First** — โค้ดน้อยสุดที่แก้ปัญหาได้จริง ไม่มี abstraction ให้โค้ด single-use ไม่มี speculative feature
-2. **Surgical Changes** — แตะเฉพาะที่ต้องแตะ ไม่ refactor ข้างเคียง ตาม style เดิม
-3. **Clarify Early** — ตีความได้หลายทาง → เสนอ option; ไม่ชัด → **ถามก่อนเขียนโค้ด ห้ามเดาแล้วทำ**
-4. **Design decision ให้เจ้าของเคาะ** — business rule ที่มีหลายทางเลือก เสนอ option + ข้อดีเสียก่อน implement (bug ที่ขัด behavior ที่ระบบสัญญาไว้เอง แก้ได้เลย)
-5. **Test After Feature ตามความซับซ้อน** — ซับซ้อนมาก (schema/permission/multi-step) = test จริงทุกครั้ง · ปานกลาง = test เมื่อเสร็จกลุ่ม · ง่าย (typo/CSS) = build ผ่านพอ
+1. **Simplicity first** — the least code that truly solves the problem; no abstractions for single-use code, no speculative features
+2. **Surgical changes** — touch only what must be touched, no drive-by refactors, follow existing style
+3. **Clarify early** — multiple interpretations → present options; unclear → **ask before writing code, never guess and run**
+4. **Design decisions belong to the owner** — business rules with alternatives get options + tradeoffs before implementation (bugs that contradict the system's own promised behavior may be fixed directly)
+5. **Test after feature, scaled to complexity** — high (schema/permission/multi-step) = real tests every time · medium = test when the group is done · trivial (typo/CSS) = a passing build is enough
 
-## Engineering Discipline (งาน debug/refactor ซับซ้อน)
+## Engineering discipline (complex debug/refactor work)
 
-- **Evidence-based:** ทุกข้อสรุปอ้าง file:line ที่ verify แล้ว · แยก observation จาก inference · หาไม่เจอ = เขียน "Insufficient evidence found." แล้ว investigate ต่อ
-- **Anti-hallucination:** ยังไม่เปิดดู = เขียน "Not verified." · memory recall อาจ stale → verify ก่อนใช้
-- **Read-before-write:** investigate → root cause → design (≥2 ทางเลือก) → implement · ลงมือได้เมื่อ Confidence ≥ MEDIUM (LOW = หยุด investigate ต่อ)
-- **Debug มี hypothesis เสมอ** — ห้ามแก้ symptom ห้ามสุ่มเดา
-- **Self review 4 มุมก่อน push:** Logic · Security · Data · Code Quality
+- **Evidence-based:** every conclusion cites a verified file:line · separate observation from inference · nothing found = write "Insufficient evidence found." and keep investigating
+- **Anti-hallucination:** haven't opened it = write "Not verified." · recalled memory may be stale → verify before use
+- **Read before write:** investigate → root cause → design (≥2 options) → implement · start only at Confidence ≥ MEDIUM (LOW = stop and investigate further)
+- **Debugging always has a hypothesis** — never patch symptoms, never guess randomly
+- **Self-review from 4 angles before push:** Logic · Security · Data · Code quality
 
-**Final Delivery Format (ปิดงานทุกครั้ง):**
+**Final delivery format (every close-out):**
 ```
-Summary:    เปลี่ยนอะไร + ทำไม
-Evidence:   ไฟล์/observation ที่ support
-Risks:      ไม่มี = เขียน "ไม่มี"
-Validation: test/check ที่ทำจริง
+Summary:    what changed + why
+Evidence:   files/observations that support it
+Risks:      none = write "none"
+Validation: tests/checks actually run
 Confidence: HIGH / MEDIUM / LOW
 ```
 
-## Delegation (subagent)
+## Delegation (subagents)
 
-- Prompt ต้อง self-contained — subagent ไม่เห็นบทสนทนา: ไฟล์เป้าหมาย + pattern ตัวอย่างจริง + กฎของ area
-- **Subagent ห้าม commit/push** — orchestrator รีวิว diff + รัน validation เองก่อน commit
-- งานเล็กกว่า overhead ของการส่ง context → ทำเอง
-- เลือก model ถูก/เร็วสุดที่ทำได้จริง: ซับซ้อน/เสี่ยง → ตัวใหญ่ · spec ชัด → กลาง · mechanical → เล็ก
+- Prompts must be self-contained — subagents can't see the conversation: target files + real example patterns + the area's rules
+- **Subagents never commit/push** — the orchestrator reviews the diff and runs validation itself before committing
+- Work smaller than the overhead of handing off context → do it yourself
+- Pick the cheapest/fastest model that can truly do the job: complex/risky → large · clear spec → medium · mechanical → small
 
 ## Project specifics
 
-<!-- ของเฉพาะ project: commands, stack, SSOT registry, business rules ที่เจ้าของเคาะ -->
+<!-- Project-specific: commands, stack, SSOT registry, owner-approved business rules -->
 ### Commands
 ```bash
 <DEV_COMMAND>
 <TEST_COMMAND>
 ```
-### SSOT Registry
-| Concept | Canonical home | กฎ |
+### SSOT registry
+| Concept | Canonical home | Rule |
 |---|---|---|
 | <...> | <...> | <...> |

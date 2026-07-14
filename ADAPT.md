@@ -1,44 +1,44 @@
-# ปรับกฎให้ตรง repo — แก้ที่ `gwork.json` ไฟล์เดียว
+# Adapting rules to your repo — edit `gwork.json`, one file
 
-วาง `gwork.json` ที่ root ของ repo (copy จาก [gwork.example.json](gwork.example.json)) — **ไม่ต้องแตะโค้ด hook/script เลย**
-กติกา: ไม่มีไฟล์ / ไม่มี key ไหน = ใช้ default · มีไฟล์แต่ parse ไม่ได้ = ทุกด่าน **fail ดังๆ** (commit/push ไม่ออกจนกว่าจะแก้ config)
+Place `gwork.json` at the repo root (copy from [gwork.example.json](gwork.example.json)) — **no hook/script code changes needed.**
+Contract: missing file / missing key = defaults · file present but unparseable = every gate **fails loud** (commits/pushes blocked until fixed).
 
-## key ทั้งหมด
+## All keys
 
-### `commit.types` — type list ของ commit message
+### `commit.types` — allowed commit message types
 ```json
 "commit": { "types": ["feat", "fix", "chore", "wip"] }
 ```
-ข้อความที่ git สร้างเอง (`Merge`/`Revert`/`fixup!`/`squash!`) ผ่านเสมอ ไม่ต้องใส่
+Git-generated messages (`Merge`/`Revert`/`fixup!`/`squash!`) always pass — no need to list them. The description after `type:` may be in any language.
 
-### `prepush` — รายการ check ก่อน push (รันตามลำดับ ตัวไหน fail = push ไม่ออก)
+### `prepush` — checks before push (run in order; any failure blocks the push)
 ```json
 "prepush": ["npx tsc --noEmit", "node scripts/tasklog-check.mjs", "npm run test:run"]
 ```
-repo ไม่ใช่ TypeScript ก็เปลี่ยนเป็น build/lint ของ stack นั้นได้เลย
+Not a TypeScript repo? Swap in your stack's build/lint commands.
 
-### `tasklog` — เกณฑ์ความสะอาดของ INDEX
+### `tasklog` — INDEX hygiene thresholds
 ```json
 "tasklog": { "maxGotcha": 140, "bcGotchaMax": 80 }
 ```
-`maxGotcha` = ความยาวสูงสุดของคอลัมน์ Gotcha · `bcGotchaMax` = เพดานเมื่อแถวมี BC แล้ว (ต้อง promote แล้วตัด text)
+`maxGotcha` = max length of the Gotcha column · `bcGotchaMax` = ceiling once the row has a BC (promote and trim)
 
-### `modules` — กติกา map path → module key (ใช้ร่วมกันทั้ง migrate และ gotcha hook)
+### `modules` — path → module key mapping (shared by migrate and the gotcha hook)
 ```json
 "modules": [
   { "pattern": "^src/([\\w-]+)/", "name": "svc:$1" },
   { "pattern": "^packages/([\\w-]+)/", "name": "pkg:$1" }
 ]
 ```
-- เรียงลำดับสำคัญ — ตัวแรกที่ match ชนะ
-- `$1`..`$9` อ้าง capture group · regex ใน JSON ต้อง escape backslash เป็น `\\w`
-- path ที่ไม่ match: migrate → แถว `other`/`misc` · gotcha hook → เงียบ (ครอบคลุมโฟลเดอร์ที่มี gotcha จริงให้ครบ)
-- นี่คือชุดเดียวที่ทั้ง `scripts/migrate.mjs` และ `hooks/tasklog-gotcha.mjs` อ่าน — ไม่มีปัญหา 2 สำเนาอีกแล้ว
+- Order matters — first match wins
+- `$1`..`$9` reference capture groups · JSON regexes need double-escaped backslashes (`\\w`)
+- Unmatched paths: migrate → `other`/`misc` rows · gotcha hook → silent (make sure folders with real gotchas are covered)
+- This is the single rule set read by both `scripts/migrate.mjs` and `hooks/tasklog-gotcha.mjs` — the old two-copy sync problem is gone
 
-### `pathPattern` — regex จับ path ในเนื้อ log entry (ใช้ตอน migrate)
-แก้ prefix list และนามสกุลไฟล์ให้ตรง stack (เช่น Svelte เพิ่ม `svelte`, PHP เพิ่ม `php`)
+### `pathPattern` — regex that finds file paths inside log entry bodies (used by migrate)
+Adjust the prefix list and file extensions to your stack (e.g. add `svelte` for Svelte, `php` for PHP)
 
-## สิ่งที่ยังต้องแก้ในโค้ด (config ไม่ครอบคลุม)
+## What still requires code changes (not covered by config)
 
-- **รูปแบบ header ของ log เดิม** ที่ `migrate.mjs` อ่าน: ต้องเป็น `## YYYY-MM-DD` (ตามด้วย `(n)` / `— title` ได้) — log format อื่นให้แก้ regex ใน migrate.mjs หรือแปลง header ก่อน
-- **เพิ่มกฎตรวจ INDEX แบบใหม่** (นอกเหนือ A/B/C/D): เขียนเพิ่มใน `scripts/tasklog-check.mjs` ตาม pattern `errors.push(...)`
+- **Legacy log header format** read by `migrate.mjs`: must be `## YYYY-MM-DD` (optionally followed by `(n)` / `— title`) — for other formats, edit the regex in migrate.mjs or convert headers first
+- **New INDEX check rules** (beyond A/B/C/D): add to `scripts/tasklog-check.mjs` following the existing `errors.push(...)` pattern

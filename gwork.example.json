@@ -1,5 +1,5 @@
 {
-  "$comment": "copy เป็น gwork.json ที่ root ของ repo แล้วแก้ได้อิสระ — ไม่มีไฟล์/ไม่มี key ไหน = ใช้ค่า default ตามนี้",
+  "$comment": "Copy to gwork.json at the repo root and edit freely — a missing file or missing key means the defaults shown here are used",
 
   "commit": {
     "types": ["feat", "fix", "chore", "refactor", "docs", "test", "perf", "style", "ci"]

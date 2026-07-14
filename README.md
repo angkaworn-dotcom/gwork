@@ -2,70 +2,72 @@
 
 Deterministic rules enforced by git hooks and Claude Code hooks, not prompts. **Blocked push > polite reminder.**
 
-หลักการเดียว: **กฎไหน check ได้แบบ deterministic → เป็น hook/script ที่ block จริง** CLAUDE.md เหลือเฉพาะเรื่องดุลพินิจ
+One principle: **any rule that can be checked deterministically becomes a hook/script that actually blocks.** CLAUDE.md keeps only judgment calls.
 
-## อะไรคุมด้วยอะไร
+## What is enforced by what
 
-| กฎ | คุมด้วย | ผลถ้าฝืน |
+| Rule | Enforced by | If violated |
 |---|---|---|
-| tsc ผ่านก่อน push | `githooks/pre-push` | push ไม่ออก |
-| commit format `type: desc` ห้าม `@` (ยกเว้น Merge/Revert) | `githooks/commit-msg` | commit ไม่ผ่าน |
-| ลง log แล้วต้อง update INDEX (เดือนล่าสุด) | `scripts/tasklog-check.mjs` ใน pre-push | push ไม่ออก |
-| INDEX link เน่า/ชี้ผิด shard · gotcha ยาวเกิน · มี BC แล้วยังแบก text | tasklog-check | push ไม่ออก |
-| อ่าน gotcha ก่อนแตะ module | `hooks/tasklog-gotcha.mjs` (PreToolUse) | inject ให้เอง — AI ไม่ต้องจำ |
-| Evidence / Confidence gate / Clarify Early / subagent ห้าม commit | `CLAUDE.template.md` (prompt) | ดุลพินิจ — automate ไม่ได้ |
+| tsc passes before push | `githooks/pre-push` | push blocked |
+| commit format `type: desc`, no `@` (Merge/Revert exempt) | `githooks/commit-msg` | commit rejected |
+| logged work must update INDEX (latest month) | `scripts/tasklog-check.mjs` in pre-push | push blocked |
+| rotten/wrong-shard INDEX links · gotcha too long · BC rows carrying text | tasklog-check | push blocked |
+| read gotchas before touching a module | `hooks/tasklog-gotcha.mjs` (PreToolUse) | auto-injected — the AI never has to remember |
+| Evidence / Confidence gate / Clarify Early / subagents never commit | `CLAUDE.template.md` (prompt) | judgment — can't be automated |
 
-## ใช้เป็น Claude Code skill
+## Use as a Claude Code skill
 
 ```bash
 git clone https://github.com/angkaworn-dotcom/gwork.git ~/.claude/skills/gwork
 ```
 
-แล้วสั่งใน Claude Code ว่า **"ติดตั้ง gwork"** ใน repo เป้าหมาย — ขั้นตอนเต็มอยู่ใน [SKILL.md](SKILL.md) การปรับกฎต่อ project อยู่ใน [ADAPT.md](ADAPT.md)
+Then tell Claude Code to **"install gwork"** in your target repo — full steps in [SKILL.md](SKILL.md), per-project rule tuning in [ADAPT.md](ADAPT.md).
 
 ### Slash commands (copy `commands/*.md` → `~/.claude/commands/`)
 
-| Command | ทำอะไร |
+| Command | What it does |
 |---|---|
-| `/gwork` | ติดตั้งคิทเข้า repo ปัจจุบัน |
-| `/gwork-log` | ปิดงาน: ลง entry + update INDEX ในคอมมิตเดียว |
-| `/gwork-check` | ตรวจสุขภาพ task-log แล้วช่วยแก้ถ้าแดง |
-| `/gwork-rule <กฎ>` | เพิ่ม/แก้กฎ — จำแนกให้เองว่าลง gwork.json / โค้ด / CLAUDE.md |
-| `/gwork-status` | รายงานสถานะติดตั้ง + config + สุขภาพ log |
+| `/gwork` | install the kit into the current repo |
+| `/gwork-log` | close out a task: write the entry + update INDEX in one commit |
+| `/gwork-check` | health-check the task-log and fix whatever is red |
+| `/gwork-rule <rule>` | add/change a rule — routes it to gwork.json / code / CLAUDE.md automatically |
+| `/gwork-status` | report install state + active config + log health |
 
-## ติดตั้งมือ (ไม่ใช้ skill)
+## Manual install (without the skill)
 
 ```bash
-# 1. copy โครง
+# 1. copy the skeleton
 cp -r githooks <repo>/githooks
 cp scripts/tasklog-check.mjs scripts/migrate.mjs <repo>/scripts/
 cd <repo> && git config core.hooksPath githooks
 
-# 2. มี log เดิม → migrate (ปรับ PATH_RE + moduleOf ใน scripts/migrate.mjs ก่อน — ดู ADAPT.md)
+# 2. existing log → migrate (create gwork.json from gwork.example.json first — see ADAPT.md)
 node scripts/migrate.mjs "update task.md"
-# ไม่มี → สร้าง task-log/INDEX.md (header ตาราง) + task-log/<YYYY-MM>.md เปล่า
+# no log → create task-log/INDEX.md (table header) + an empty task-log/<YYYY-MM>.md
 
-# 3. hook ฉีด gotcha (ครั้งเดียวต่อเครื่อง)
+# 3. gotcha-injection hook (once per machine)
 cp hooks/tasklog-gotcha.mjs ~/.claude/hooks/
-# แล้วลงทะเบียน PreToolUse ใน ~/.claude/settings.json:
+# then register PreToolUse in ~/.claude/settings.json:
 ```
 ```json
 "hooks": { "PreToolUse": [ { "matcher": "Edit|Write|MultiEdit",
   "hooks": [{ "type": "command", "command": "node \"<ABS>/.claude/hooks/tasklog-gotcha.mjs\"" }] } ] }
 ```
 
-## ปรับกฎได้อิสระที่ `gwork.json`
+## Configure rules freely at `gwork.json`
 
-ทุกกฎแก้ได้ที่ `gwork.json` ที่ root ของ repo โดยไม่ต้องแตะโค้ด — commit types, รายการ check ใน pre-push, เกณฑ์ความยาว gotcha, และกติกา map path→module (ชุดเดียว ใช้ร่วมกันทั้ง migrate และ gotcha hook) ดูตัวอย่างเต็มที่ [gwork.example.json](gwork.example.json) และคำอธิบายทุก key ที่ [ADAPT.md](ADAPT.md)
-ไม่มีไฟล์ = ใช้ default · config parse ไม่ได้ = ทุกด่าน fail ดังๆ ไม่ถอยไป default เงียบๆ
+Every rule is editable at `gwork.json` in the repo root without touching code — commit types, pre-push check list, gotcha length limits, and the path→module mapping (one shared set used by both migrate and the gotcha hook). Full example at [gwork.example.json](gwork.example.json), every key documented in [ADAPT.md](ADAPT.md).
+No file = defaults · unparseable config = every gate fails loud, never a silent fallback.
 
-## ผลทดสอบกับข้อมูลจริง (Osaki Hub Evo, 2026-07)
+**Language:** tooling and docs are English; your data is yours — log entries, gotchas, INDEX content, and commit descriptions work in any language (the scripts parse structure, not prose).
 
-- migrate: 193 entries → 3 shards + INDEX 137 modules · tasklog-check เขียว
-- hook: inject BC+entries ตอนแตะ module ครั้งแรก · ครั้งที่สองเงียบ · ไฟล์นอก module เงียบ
-- ผ่านการไล่บัค 2026-07-14: merge/revert commit ผ่าน hook, path case-insensitive บน Windows, จับ link ชี้ผิด shard, เรียง seq ≥10 ถูกลำดับ
+## Tested against real data (Osaki Hub Evo, 2026-07)
 
-## Phase 2 (รอหลักฐานจากการใช้จริงก่อนตัดสิน)
+- migrate: 193 entries → 3 shards + INDEX with 137 modules · tasklog-check green
+- hook: injects BC+entries on first touch of a module · silent on second touch · silent outside modules
+- Bug hunt 2026-07-14: merge/revert commits pass the hook, path matching is case-insensitive on Windows, wrong-shard links are caught, seq ≥10 sorts correctly
 
-- PreToolUse block `git commit` ใน subagent context
-- Stop hook เตือนเมื่อจบ turn ที่แก้โค้ดแล้วยังไม่ลง task-log (ตอนนี้กันที่ pre-push ชั้นเดียว)
+## Phase 2 (waiting for evidence from real usage)
+
+- PreToolUse blocking `git commit` in subagent contexts
+- Stop hook warning when a turn edited code but logged nothing (currently guarded only at pre-push)

@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * migrate.mjs — แตก `update task.md` (append-only log) เป็น:
- *   task-log/YYYY-MM.md   (shard รายเดือน, entry เดิมทุกตัว + anchor id คงที่)
- *   task-log/INDEX.md     (dict: module → entries → BC → gotcha 1 บรรทัด [ให้เติมมือ])
- * ไม่แก้ไฟล์ต้นฉบับ — เขียนผลลัพธ์ลง task-log/ เท่านั้น
+ * migrate.mjs — splits an append-only log (e.g. `update task.md`) into:
+ *   task-log/YYYY-MM.md   (monthly shards, every original entry + stable anchor ids)
+ *   task-log/INDEX.md     (dict: module → entries → BC → one-line gotcha [filled by hand])
+ * Never modifies the source file — writes results into task-log/ only.
  * Usage: node migrate.mjs "update task.md"
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
@@ -32,16 +32,16 @@ console.log(`parsed ${entries.length} entries`)
 for (const e of entries) {
   e.id = e.seq ? `${e.date}-${e.seq}` : e.date
 }
-// dedupe ids (same date, no seq, multiple entries) → append -b, -c ...
+// dedupe ids (same date, no seq, multiple entries)
 const seen = new Map()
 for (const e of entries) {
   const n = (seen.get(e.id) ?? 0) + 1
   seen.set(e.id, n)
-  if (n > 1) e.id = `${e.id}-${String.fromCharCode(95 + n)}` // ตัวที่ 2 → -a, ตัวที่ 3 → -b, ...
+  if (n > 1) e.id = `${e.id}-${String.fromCharCode(95 + n)}` // 2nd → -a, 3rd → -b, ...
 }
 
 // --- 3. extract touched modules/paths per entry ---
-// กฎอ่านจาก gwork.json ที่ root ถ้ามี (แชร์ชุดเดียวกับ hooks/tasklog-gotcha.mjs) — ไม่มีก็ใช้ default
+// Rules come from gwork.json at the root if present (shared with hooks/tasklog-gotcha.mjs) — defaults otherwise
 const DEFAULT_MODULES = [
   { pattern: '^modules/([\\w-]+)/', name: '$1' },
   { pattern: '^(?:lib|app/actions)/([\\w-]+)', name: '(shim) $1' },
@@ -53,7 +53,7 @@ const DEFAULT_MODULES = [
 let cfg = {}
 if (existsSync('gwork.json')) {
   try { cfg = JSON.parse(readFileSync('gwork.json', 'utf8')) }
-  catch (e) { console.error(`migrate: gwork.json parse ไม่ได้ — ${e.message}`); process.exit(1) }
+  catch (e) { console.error(`migrate: cannot parse gwork.json — ${e.message}`); process.exit(1) }
 }
 const PATH_RE = new RegExp(cfg.pathPattern
   ?? '(?:modules|app|lib|components|prisma|tests|hooks|scripts)/[\\w\\-./[\\]]+\\.(?:tsx?|mjs|prisma|json|md)', 'g')
@@ -69,7 +69,7 @@ for (const e of entries) {
   const text = e.body.join('\n')
   e.paths = [...new Set(text.match(PATH_RE) ?? [])]
   e.modules = [...new Set(e.paths.map(moduleOf))]
-  if (e.modules.length === 0) e.modules = ['misc']  // entry ไม่มี path → เข้าแถว misc กัน INDEX ตกหล่น
+  if (e.modules.length === 0) e.modules = ['misc']  // entry with no paths → misc row so INDEX never drops it
   e.bcs = [...new Set(text.match(/BC-\d{3}/g) ?? [])]
 }
 
@@ -83,7 +83,7 @@ for (const e of entries) {
   byMonth.get(mo).push(e)
 }
 for (const [mo, list] of byMonth) {
-  list.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true })) // numeric กัน -10 มาก่อน -2
+  list.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true })) // numeric so -10 sorts after -2
   const out = list.map(e => {
     const [h, ...rest] = e.body
     return `<a id="${e.id}"></a>\n${h}\n${rest.join('\n')}`.trimEnd()
@@ -101,13 +101,13 @@ for (const e of entries) {
   }
 }
 const rows = [...idx.entries()].sort((a, b) => b[1].length - a[1].length)
-let md = `# task-log INDEX (dict — lookup ก่อนแตะ module ห้ามอ่าน shard ทั้งไฟล์)
+let md = `# task-log INDEX (dict — look up before touching a module, never read a whole shard)
 
-> วิธีใช้: หา module ที่กำลังจะแตะ → เปิดเฉพาะ entry ที่ชี้ (\`task-log/YYYY-MM.md#anchor\`)
-> กฎบวม: gotcha ต่อแถว ≤ 1 บรรทัด · module ที่ gotcha ซ้ำ ≥2 ครั้ง หรือ destructive 1 ครั้ง → promote เป็น BC ใน CLAUDE.md แล้วเหลือแค่เลข BC ที่นี่
-> คอลัมน์ gotcha ตอน migrate เป็น TODO — เติมจากความจำ/entry จริงเฉพาะแถวที่มีบทเรียนจริง แถวงานปกติปล่อยว่างได้
+> How to use: find the module you are about to touch → open only the entries it points to (\`task-log/YYYY-MM.md#anchor\`)
+> Bloat rules: gotcha per row ≤ 1 line · a module whose gotcha repeats ≥2 times, or one destructive incident → promote to a BC in CLAUDE.md and keep only the BC number here
+> Gotcha column is TODO after migrate — fill from memory/real entries only for rows with real lessons; routine rows may stay empty
 
-| Module | Entries (ล่าสุดก่อน) | BC | Gotcha (≤1 บรรทัด) |
+| Module | Entries (latest first) | BC | Gotcha (≤1 line) |
 |---|---|---|---|
 `
 for (const [mod, list] of rows) {

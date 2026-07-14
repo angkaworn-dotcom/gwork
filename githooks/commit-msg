@@ -1,0 +1,14 @@
+#!/bin/sh
+# commit-msg — บังคับ "type: description" ห้าม @ prefix
+MSG=$(head -1 "$1")
+case "$MSG" in
+  @*) echo "commit-msg: ห้ามขึ้นต้นด้วย @ — ใช้ type: description" >&2; exit 1 ;;
+esac
+# ปล่อยข้อความที่ git สร้างเอง (merge/revert/fixup/squash) — บังคับ format ไม่ได้
+case "$MSG" in
+  "Merge "*|"Revert "*|"fixup! "*|"squash! "*) exit 0 ;;
+esac
+echo "$MSG" | grep -qE '^(feat|fix|chore|refactor|docs|test|perf|style|ci)(\([^)]+\))?: .+' || {
+  echo "commit-msg: format ต้องเป็น 'type: description' เช่น 'fix: ...'" >&2
+  exit 1
+}

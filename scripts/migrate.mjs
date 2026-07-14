@@ -6,7 +6,7 @@
  * ไม่แก้ไฟล์ต้นฉบับ — เขียนผลลัพธ์ลง task-log/ เท่านั้น
  * Usage: node migrate.mjs "update task.md"
  */
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 
 const src = process.argv[2] ?? 'update task.md'
@@ -41,14 +41,29 @@ for (const e of entries) {
 }
 
 // --- 3. extract touched modules/paths per entry ---
-const PATH_RE = /(?:modules|app|lib|components|prisma|tests|hooks|scripts)\/[\w\-./[\]]+\.(?:tsx?|mjs|prisma|json|md)/g
+// กฎอ่านจาก gwork.json ที่ root ถ้ามี (แชร์ชุดเดียวกับ hooks/tasklog-gotcha.mjs) — ไม่มีก็ใช้ default
+const DEFAULT_MODULES = [
+  { pattern: '^modules/([\\w-]+)/', name: '$1' },
+  { pattern: '^(?:lib|app/actions)/([\\w-]+)', name: '(shim) $1' },
+  { pattern: '^app/(?:visit/)?([\\w-]+)/', name: 'page:$1' },
+  { pattern: '^components/([\\w-]+)/', name: 'ui:$1' },
+  { pattern: '^tests/([\\w-]+)/', name: 'test:$1' },
+  { pattern: '^(prisma|hooks|scripts)/', name: '$1' },
+]
+let cfg = {}
+if (existsSync('gwork.json')) {
+  try { cfg = JSON.parse(readFileSync('gwork.json', 'utf8')) }
+  catch (e) { console.error(`migrate: gwork.json parse ไม่ได้ — ${e.message}`); process.exit(1) }
+}
+const PATH_RE = new RegExp(cfg.pathPattern
+  ?? '(?:modules|app|lib|components|prisma|tests|hooks|scripts)/[\\w\\-./[\\]]+\\.(?:tsx?|mjs|prisma|json|md)', 'g')
+const moduleRules = Array.isArray(cfg.modules) && cfg.modules.length ? cfg.modules : DEFAULT_MODULES
 const moduleOf = p => {
-  const m = p.match(/^modules\/([\w-]+)\//); if (m) return m[1]
-  const shim = p.match(/^(?:lib|app\/actions)\/([\w-]+)/); if (shim) return `(shim) ${shim[1]}`
-  const page = p.match(/^app\/(?:visit\/)?([\w-]+)\//); if (page) return `page:${page[1]}`
-  const comp = p.match(/^components\/([\w-]+)\//); if (comp) return `ui:${comp[1]}`
-  const test = p.match(/^tests\/([\w-]+)\//); if (test) return `test:${test[1]}`
-  const area = p.match(/^(prisma|hooks|scripts)\//); return area ? area[1] : 'other'
+  for (const r of moduleRules) {
+    const m = p.match(new RegExp(r.pattern))
+    if (m) return r.name.replace(/\$(\d)/g, (_, i) => m[+i] ?? '')
+  }
+  return 'other'
 }
 for (const e of entries) {
   const text = e.body.join('\n')

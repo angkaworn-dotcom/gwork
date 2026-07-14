@@ -13,7 +13,15 @@ import { join } from 'node:path'
 
 const dirArg = process.argv.indexOf('--dir')
 const DIR = dirArg > -1 ? process.argv[dirArg + 1] : 'task-log'
-const MAX_GOTCHA = 140
+// เกณฑ์ปรับได้ที่ gwork.json → tasklog.maxGotcha / tasklog.bcGotchaMax
+// ไม่มีไฟล์ = default · มีแต่ parse ไม่ได้ = fail ดังๆ (config เสียห้ามเงียบ)
+let cfg = {}
+if (existsSync('gwork.json')) {
+  try { cfg = JSON.parse(readFileSync('gwork.json', 'utf8')) }
+  catch (e) { console.error(`tasklog-check: gwork.json parse ไม่ได้ — ${e.message}`); process.exit(1) }
+}
+const MAX_GOTCHA = cfg.tasklog?.maxGotcha ?? 140
+const BC_GOTCHA_MAX = cfg.tasklog?.bcGotchaMax ?? 80
 const errors = []
 
 if (!existsSync(join(DIR, 'INDEX.md'))) {
@@ -49,7 +57,7 @@ for (const line of index.split('\n')) {
   if (gotcha && gotcha !== 'TODO' && gotcha.length > MAX_GOTCHA)
     errors.push(`C ${mod}: gotcha ${gotcha.length} chars (max ${MAX_GOTCHA}) — กลั่นให้เหลือบรรทัดเดียว หรือ promote เป็น BC`)
   // D: มี BC แล้วต้องไม่แบก gotcha ยาวซ้ำ
-  if (bc && bc !== '—' && gotcha && gotcha !== 'TODO' && gotcha.length > 80)
+  if (bc && bc !== '—' && gotcha && gotcha !== 'TODO' && gotcha.length > BC_GOTCHA_MAX)
     errors.push(`D ${mod}: มี ${bc} แล้ว — ย้ายรายละเอียดเข้า BC ใน CLAUDE.md แล้วตัด gotcha ที่นี่ให้สั้น`)
 }
 

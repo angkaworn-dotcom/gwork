@@ -1,5 +1,6 @@
 #!/bin/sh
 # commit-msg — บังคับ "type: description" ห้าม @ prefix
+# แก้ type list ได้ที่ gwork.json → commit.types (ไม่ต้องแตะไฟล์นี้)
 MSG=$(head -1 "$1")
 case "$MSG" in
   @*) echo "commit-msg: ห้ามขึ้นต้นด้วย @ — ใช้ type: description" >&2; exit 1 ;;
@@ -8,7 +9,14 @@ esac
 case "$MSG" in
   "Merge "*|"Revert "*|"fixup! "*|"squash! "*) exit 0 ;;
 esac
-echo "$MSG" | grep -qE '^(feat|fix|chore|refactor|docs|test|perf|style|ci)(\([^)]+\))?: .+' || {
-  echo "commit-msg: format ต้องเป็น 'type: description' เช่น 'fix: ...'" >&2
+DEFAULT_TYPES='feat|fix|chore|refactor|docs|test|perf|style|ci'
+# ไม่มี gwork.json = default · มีแต่ parse ไม่ได้ = block (config เสียห้ามเงียบ)
+TYPES=$(node -p "(()=>{try{const c=require(process.cwd()+'/gwork.json');const t=c.commit&&c.commit.types;return Array.isArray(t)&&t.length?t.join('|'):''}catch(e){return e.code==='MODULE_NOT_FOUND'?'':'__BAD__'}})()" 2>/dev/null)
+if [ "$TYPES" = "__BAD__" ]; then
+  echo "commit-msg: gwork.json parse ไม่ได้ — แก้ config ก่อน commit" >&2; exit 1
+fi
+[ -z "$TYPES" ] && TYPES="$DEFAULT_TYPES"
+echo "$MSG" | grep -qE "^($TYPES)(\([^)]+\))?: .+" || {
+  echo "commit-msg: format ต้องเป็น 'type: description' (type: $TYPES)" >&2
   exit 1
 }

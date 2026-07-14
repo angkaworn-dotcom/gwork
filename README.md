@@ -44,9 +44,10 @@ cp hooks/tasklog-gotcha.mjs ~/.claude/hooks/
   "hooks": [{ "type": "command", "command": "node \"<ABS>/.claude/hooks/tasklog-gotcha.mjs\"" }] } ] }
 ```
 
-## จุดที่ต้อง sync กันเสมอ
+## ปรับกฎได้อิสระที่ `gwork.json`
 
-`moduleOf()` มี 2 สำเนา — `scripts/migrate.mjs` และ `hooks/tasklog-gotcha.mjs` **แก้ regex ต้องแก้คู่กัน** (จงใจไม่ dedupe: hook อยู่ global `~/.claude/` script อยู่ใน repo)
+ทุกกฎแก้ได้ที่ `gwork.json` ที่ root ของ repo โดยไม่ต้องแตะโค้ด — commit types, รายการ check ใน pre-push, เกณฑ์ความยาว gotcha, และกติกา map path→module (ชุดเดียว ใช้ร่วมกันทั้ง migrate และ gotcha hook) ดูตัวอย่างเต็มที่ [gwork.example.json](gwork.example.json) และคำอธิบายทุก key ที่ [ADAPT.md](ADAPT.md)
+ไม่มีไฟล์ = ใช้ default · config parse ไม่ได้ = ทุกด่าน fail ดังๆ ไม่ถอยไป default เงียบๆ
 
 ## ผลทดสอบกับข้อมูลจริง (Osaki Hub Evo, 2026-07)
 

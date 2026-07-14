@@ -1,0 +1,28 @@
+{
+  "$comment": "copy เป็น gwork.json ที่ root ของ repo แล้วแก้ได้อิสระ — ไม่มีไฟล์/ไม่มี key ไหน = ใช้ค่า default ตามนี้",
+
+  "commit": {
+    "types": ["feat", "fix", "chore", "refactor", "docs", "test", "perf", "style", "ci"]
+  },
+
+  "prepush": [
+    "npx tsc --noEmit",
+    "node scripts/tasklog-check.mjs"
+  ],
+
+  "tasklog": {
+    "maxGotcha": 140,
+    "bcGotchaMax": 80
+  },
+
+  "pathPattern": "(?:modules|app|lib|components|prisma|tests|hooks|scripts)/[\\w\\-./[\\]]+\\.(?:tsx?|mjs|prisma|json|md)",
+
+  "modules": [
+    { "pattern": "^modules/([\\w-]+)/", "name": "$1" },
+    { "pattern": "^(?:lib|app/actions)/([\\w-]+)", "name": "(shim) $1" },
+    { "pattern": "^app/(?:visit/)?([\\w-]+)/", "name": "page:$1" },
+    { "pattern": "^components/([\\w-]+)/", "name": "ui:$1" },
+    { "pattern": "^tests/([\\w-]+)/", "name": "test:$1" },
+    { "pattern": "^(prisma|hooks|scripts)/", "name": "$1" }
+  ]
+}

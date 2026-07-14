@@ -1,39 +1,44 @@
-# ปรับ kit ให้ตรง repo — จุดที่ต้องแก้ต่อ project
+# ปรับกฎให้ตรง repo — แก้ที่ `gwork.json` ไฟล์เดียว
 
-## 1. `moduleOf()` — 2 สำเนา แก้คู่กันเสมอ
+วาง `gwork.json` ที่ root ของ repo (copy จาก [gwork.example.json](gwork.example.json)) — **ไม่ต้องแตะโค้ด hook/script เลย**
+กติกา: ไม่มีไฟล์ / ไม่มี key ไหน = ใช้ default · มีไฟล์แต่ parse ไม่ได้ = ทุกด่าน **fail ดังๆ** (commit/push ไม่ออกจนกว่าจะแก้ config)
 
-อยู่ใน `scripts/migrate.mjs` (บรรทัด ~45) และ `hooks/tasklog-gotcha.mjs` (บรรทัด ~43)
-ค่า default ผูกกับ structure ของ Osaki Hub Evo:
+## key ทั้งหมด
 
-```js
-modules/<X>/          → X            // feature modules
-lib/<X>  app/actions/<X> → (shim) X  // shared logic
-app/[visit/]<X>/      → page:X       // Next.js pages (มี /visit/ prefix ได้)
-components/<X>/       → ui:X
-tests/<X>/            → test:X
-prisma|hooks|scripts/ → ชื่อ dir ตรงๆ
+### `commit.types` — type list ของ commit message
+```json
+"commit": { "types": ["feat", "fix", "chore", "wip"] }
 ```
+ข้อความที่ git สร้างเอง (`Merge`/`Revert`/`fixup!`/`squash!`) ผ่านเสมอ ไม่ต้องใส่
 
-**วิธีปรับ:** สำรวจ top-level dirs ของ repo เป้าหมาย (`ls`) แล้วเขียน regex ให้ทุกโฟลเดอร์โค้ดหลัก map เป็น module key ที่มนุษย์เรียกกันจริง path ที่ไม่ match:
-- ใน `migrate.mjs` → ตกแถว `other`/`misc` (ยอมรับได้)
-- ใน `tasklog-gotcha.mjs` → return `null` = hook เงียบ (ต้องครอบคลุมโฟลเดอร์ที่มี gotcha จริง)
+### `prepush` — รายการ check ก่อน push (รันตามลำดับ ตัวไหน fail = push ไม่ออก)
+```json
+"prepush": ["npx tsc --noEmit", "node scripts/tasklog-check.mjs", "npm run test:run"]
+```
+repo ไม่ใช่ TypeScript ก็เปลี่ยนเป็น build/lint ของ stack นั้นได้เลย
 
-## 2. `PATH_RE` ใน migrate.mjs (บรรทัด ~44)
+### `tasklog` — เกณฑ์ความสะอาดของ INDEX
+```json
+"tasklog": { "maxGotcha": 140, "bcGotchaMax": 80 }
+```
+`maxGotcha` = ความยาวสูงสุดของคอลัมน์ Gotcha · `bcGotchaMax` = เพดานเมื่อแถวมี BC แล้ว (ต้อง promote แล้วตัด text)
 
-Regex จับ path ในเนื้อ log entry — แก้ prefix list (`modules|app|lib|...`) และนามสกุลไฟล์ (`tsx?|mjs|prisma|json|md`) ให้ตรง stack ของ repo (เช่น Svelte เพิ่ม `svelte`, PHP เพิ่ม `php`)
+### `modules` — กติกา map path → module key (ใช้ร่วมกันทั้ง migrate และ gotcha hook)
+```json
+"modules": [
+  { "pattern": "^src/([\\w-]+)/", "name": "svc:$1" },
+  { "pattern": "^packages/([\\w-]+)/", "name": "pkg:$1" }
+]
+```
+- เรียงลำดับสำคัญ — ตัวแรกที่ match ชนะ
+- `$1`..`$9` อ้าง capture group · regex ใน JSON ต้อง escape backslash เป็น `\\w`
+- path ที่ไม่ match: migrate → แถว `other`/`misc` · gotcha hook → เงียบ (ครอบคลุมโฟลเดอร์ที่มี gotcha จริงให้ครบ)
+- นี่คือชุดเดียวที่ทั้ง `scripts/migrate.mjs` และ `hooks/tasklog-gotcha.mjs` อ่าน — ไม่มีปัญหา 2 สำเนาอีกแล้ว
 
-## 3. `githooks/pre-push`
+### `pathPattern` — regex จับ path ในเนื้อ log entry (ใช้ตอน migrate)
+แก้ prefix list และนามสกุลไฟล์ให้ตรง stack (เช่น Svelte เพิ่ม `svelte`, PHP เพิ่ม `php`)
 
-Default: `npx tsc --noEmit` + `node scripts/tasklog-check.mjs`
-- repo ไม่มี TypeScript → เปลี่ยนเป็น build/lint command ของ stack นั้น
-- อยากเข้ม: เปิดบรรทัด eslint (`npx eslint . --max-warnings 0`) — ช้าขึ้น
-- Windows: git for Windows รัน sh hook ได้ตรงๆ ไม่ต้องแปลง
+## สิ่งที่ยังต้องแก้ในโค้ด (config ไม่ครอบคลุม)
 
-## 4. `githooks/commit-msg`
-
-Type list default: `feat|fix|chore|refactor|docs|test|perf|style|ci` — เพิ่ม/ลดตาม convention ของทีม
-
-## 5. รูปแบบ log เดิมที่ migrate.mjs อ่านได้
-
-Entry header ต้องเป็น `## YYYY-MM-DD` (ตามด้วย `(n)` และ/หรือ `— title` ได้)
-ถ้า log เดิมใช้ header แบบอื่น → แก้ regex บรรทัด ~20 หรือแปลง header ก่อน migrate
+- **รูปแบบ header ของ log เดิม** ที่ `migrate.mjs` อ่าน: ต้องเป็น `## YYYY-MM-DD` (ตามด้วย `(n)` / `— title` ได้) — log format อื่นให้แก้ regex ใน migrate.mjs หรือแปลง header ก่อน
+- **เพิ่มกฎตรวจ INDEX แบบใหม่** (นอกเหนือ A/B/C/D): เขียนเพิ่มใน `scripts/tasklog-check.mjs` ตาม pattern `errors.push(...)`

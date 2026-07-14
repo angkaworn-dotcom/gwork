@@ -1,9 +1,12 @@
 #!/bin/sh
-# pre-push — block จริง ไม่ใช่ขอร้อง (ติดตั้ง: git config core.hooksPath .githooks)
+# pre-push — block จริง ไม่ใช่ขอร้อง (ติดตั้ง: git config core.hooksPath githooks)
+# แก้รายการ check ได้ที่ gwork.json → prepush (array ของ command — รันตามลำดับ ตัวไหน fail = push ไม่ออก)
 set -e
-echo "[pre-push] tsc --noEmit"
-npx tsc --noEmit
-echo "[pre-push] tasklog-check"
-node scripts/tasklog-check.mjs
-# เปิดเมื่อพร้อม (ช้ากว่า): npx eslint . --max-warnings 0
+CMDS=$(node -e "let c={};try{c=require(process.cwd()+'/gwork.json')}catch(e){if(e.code!=='MODULE_NOT_FOUND'){console.error('pre-push: gwork.json parse ไม่ได้ — '+e.message);process.exit(1)}};(Array.isArray(c.prepush)&&c.prepush.length?c.prepush:['npx tsc --noEmit','node scripts/tasklog-check.mjs']).forEach(x=>console.log(x))")
+printf '%s\n' "$CMDS" |
+while IFS= read -r cmd; do
+  [ -n "$cmd" ] || continue
+  echo "[pre-push] $cmd"
+  eval "$cmd"
+done
 echo "[pre-push] OK"

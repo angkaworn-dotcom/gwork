@@ -24,8 +24,8 @@ description: Install the gwork discipline kit (git pre-push/commit-msg hooks, ta
 
 ให้ `<SKILL>` = โฟลเดอร์สกิลนี้, `<REPO>` = repo เป้าหมาย
 
-1. **ปรับ module regex ให้ตรง structure ของ repo ก่อน** — ดู [ADAPT.md](ADAPT.md)
-   `moduleOf()` มี 2 สำเนา: `scripts/migrate.mjs` และ `hooks/tasklog-gotcha.mjs` **แก้ต้องแก้คู่กันเสมอ** (จงใจไม่ dedupe: hook ไป global, script ไปใน repo)
+1. **สร้าง `gwork.json` ที่ root ของ repo ให้ตรง structure ก่อน** — copy จาก `gwork.example.json` แล้วแก้ตาม [ADAPT.md](ADAPT.md)
+   กฎทั้งหมด (commit types, prepush checks, เกณฑ์ gotcha, module mapping) แก้ที่ไฟล์นี้ไฟล์เดียว user แก้ได้อิสระโดยไม่แตะโค้ด · ไม่มีไฟล์ = default (โครง Osaki Hub Evo) · config เสีย = ทุกด่าน fail ดังๆ
 2. **Copy โครง:**
    ```bash
    cp -r <SKILL>/githooks <REPO>/githooks

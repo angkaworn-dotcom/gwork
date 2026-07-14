@@ -38,21 +38,30 @@ for (let i = 0; i < 6; i++) {
 }
 if (!indexPath) ok()
 
-// --- module key (ให้ตรงกับ migrate.mjs — ปรับ 2 ที่พร้อมกันเสมอ) ---
+// --- module key: อ่านกฎจาก gwork.json ที่ root ถ้ามี — user แก้กฎได้โดยไม่แตะโค้ด ---
 // strip root prefix แบบ case-insensitive — Windows drive letter อาจมาคนละ case (C:/ vs c:/)
 const fpNorm = filePath.replace(/\\/g, '/')
 const rootNorm = root.replace(/\\/g, '/') + '/'
 const rel = fpNorm.toLowerCase().startsWith(rootNorm.toLowerCase())
   ? fpNorm.slice(rootNorm.length)
   : fpNorm
+const DEFAULT_MODULES = [
+  { pattern: '^modules/([\\w-]+)/', name: '$1' },
+  { pattern: '^(?:lib|app/actions)/([\\w-]+)', name: '(shim) $1' },
+  { pattern: '^app/(?:visit/)?([\\w-]+)/', name: 'page:$1' },
+  { pattern: '^components/([\\w-]+)/', name: 'ui:$1' },
+  { pattern: '^tests/([\\w-]+)/', name: 'test:$1' },
+  { pattern: '^(prisma|hooks|scripts)/', name: '$1' },
+]
+let cfg = {}
+try { cfg = JSON.parse(readFileSync(join(root, 'gwork.json'), 'utf8')) } catch { /* ไม่มี config = ใช้ default */ }
+const moduleRules = Array.isArray(cfg.modules) && cfg.modules.length ? cfg.modules : DEFAULT_MODULES
 const moduleOf = p => {
-  let m
-  if ((m = p.match(/^modules\/([\w-]+)\//))) return m[1]
-  if ((m = p.match(/^(?:lib|app\/actions)\/([\w-]+)/))) return `(shim) ${m[1]}`
-  if ((m = p.match(/^app\/(?:visit\/)?([\w-]+)\//))) return `page:${m[1]}`
-  if ((m = p.match(/^components\/([\w-]+)\//))) return `ui:${m[1]}`
-  if ((m = p.match(/^tests\/([\w-]+)\//))) return `test:${m[1]}`
-  if ((m = p.match(/^(prisma|hooks|scripts)\//))) return m[1]
+  for (const r of moduleRules) {
+    let m
+    try { m = p.match(new RegExp(r.pattern)) } catch { continue } // regex เสียใน config → ข้าม ไม่ล้ม hook
+    if (m) return r.name.replace(/\$(\d)/g, (_, i) => m[+i] ?? '')
+  }
   return null
 }
 const mod = moduleOf(rel)

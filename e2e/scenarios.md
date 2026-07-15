@@ -103,6 +103,8 @@ Haiku passed with either wording; the sharpened form is what ships in the comman
 | C — deep burial, no guardrail | 85k chars, rules spread to ~73k depth | **1/3** — failing runs read the file ONCE, never noticed the silent truncation, imported only the visible rules, and reported success confidently (silent partial import) |
 | D — deep burial + coverage guardrail in step 1 (prove EOF reached + imperative-keyword sweep) | same 85k doc | **2/3** — the buried module lesson now survives every run; one run still missed the deepest judgment rule, which dodges the keyword net ("Ask the user before…" ≠ "ask before", no must/never/always) |
 
+| E — same 85k doc, step 1 restructured into two phases (EXTRACT: chunked ≤300-line reads to proven EOF, verbatim candidates only → CLASSIFY: route the small list) | same 85k doc | **5/5** — every run counted lines first, read all ~5 chunks, then swept keywords; extraction no longer competes with classification for attention |
+
 Takeaways: rules that route to deterministic checks (commit types, prepush) survived
 100% at every depth; what dies at depth is judgment-rule extraction. The step-1
 coverage proof ships in the command. For rules docs beyond ~50k chars, chunk the doc

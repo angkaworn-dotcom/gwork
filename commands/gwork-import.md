@@ -4,13 +4,15 @@ description: Import rules in bulk from a file (old CLAUDE.md, team conventions, 
 
 Import every rule found in the given file into this repo's gwork setup. Communicate with the user in their language.
 
-**1. Read the source file COMPLETELY** (`$ARGUMENTS` — a path to an old CLAUDE.md, a conventions doc, or any rules file). If no path was given, ask for one. Long files get silently truncated by read tools, and a rule you never saw is a rule you silently drop — so prove full coverage before extracting:
-- check the file's total line count first, and read in chunks until you have seen the actual last line;
-- then search the whole file for imperative keywords (`must|never|always|forbidden|do not|before every|ask before`) and reconcile every hit with your extracted list — each match is either a rule you captured or prose you consciously discarded.
+**1. EXTRACT — read the whole file in chunks, collecting rules verbatim** (`$ARGUMENTS` — a path to an old CLAUDE.md, a conventions doc, or any rules file). If no path was given, ask for one. Long files get silently truncated by read tools, and a rule you never saw is a rule you silently drop — so extraction is its own pass, mechanical and complete, BEFORE any classification:
+- check the file's total line count first;
+- read in chunks of ≤300 lines (read-tool offset/limit or shell line ranges) until the last chunk visibly contains the final line;
+- from each chunk, copy out candidate rules verbatim with their line numbers — obligations/prohibitions only, no routing decisions yet;
+- finish with a cross-check: search the whole file for imperative keywords (`must|never|always|forbidden|do not|ask.*before`) and reconcile every hit against the candidate list.
 
-Split the content into discrete rules — one obligation/prohibition per item. Ignore prose that isn't a rule (project descriptions, commands lists, architecture notes) but mention what you skipped. Generic truisms with no project-specific decision content ("prefer clarity", "use good names") are noise, not rules — drop them; CLAUDE.md frugality outranks completeness of platitudes.
+Ignore prose that isn't a rule (project descriptions, meeting notes, architecture background) but mention what you skipped. Generic truisms with no project-specific decision content ("prefer clarity", "use good names") are noise, not rules — drop them; CLAUDE.md frugality outranks completeness of platitudes.
 
-**2. Classify each rule with the /gwork-rule decision tree** — can a machine check it with no judgment?
+**2. CLASSIFY — take the collected candidate list (now small) and route each rule with the /gwork-rule decision tree** — can a machine check it with no judgment?
 
 Deterministic → route by channel:
 - commit-message rules → `gwork.json` → `commit.types`

@@ -20,7 +20,7 @@ const ok = (extra) => { console.log(JSON.stringify({
     ...(extra ? { additionalContext: extra } : {}) } })); process.exit(0) }
 
 let input = ''
-try { input = readFileSync(0, 'utf8') } catch { ok() }
+try { input = readFileSync(0, 'utf8').replace(/^\uFEFF/, '') } catch { ok() } // strip BOM some shells prepend when piping
 let data = {}
 try { data = JSON.parse(input) } catch { ok() }
 

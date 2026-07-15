@@ -80,3 +80,12 @@ money gotcha), one module lesson (greet → INDEX gotcha), one judgment rule (CL
 | S6 | 3/3 (but with fabrication gaming — now caught by `noFabrication`) |
 | S7 | 0/3 |
 | S8 (run 2026-07-15) | 3/3 — all 7 checks, minimal diffs, correct dedupe |
+
+### S8 cross-model A/B (2026-07-15, DeepSeek V3 via a minimal tool-loop, n=3)
+
+| Wording of the "not deterministic" branch | Result |
+|---|---|
+| original ("a lesson tied to one specific module → INDEX Gotcha") | 0/3 — all three routed the greet lesson to CLAUDE.md as "pure judgment" |
+| sharpened ("does the rule name a specific file/module? → INDEX Gotcha, NOT CLAUDE.md, even if it reads like judgment") | 3/3 |
+
+Haiku passed with either wording; the sharpened form is what ships in the command.

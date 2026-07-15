@@ -15,9 +15,9 @@ Deterministic → route by channel:
 - file-to-module mapping → `gwork.json` → `modules` (JSON regexes need `\\w`)
 - beyond config scope → `scripts/tasklog-check.mjs` / `migrate.mjs` following existing patterns
 
-Not deterministic:
-- a lesson tied to one specific module → INDEX Gotcha column (the hook injects it)
-- pure judgment → CLAUDE.md, ≤2 lines each — but first ask whether a deterministic version hides inside it; if so, propose that route instead
+Not deterministic — check in THIS order:
+- Does the rule name a specific file, directory, or module? Then it is a module lesson → that module's Gotcha column in `task-log/INDEX.md` (the hook injects it when the module is touched), NOT CLAUDE.md — even if it reads like a judgment call.
+- Only rules about how to work in general (no specific file/module named) → CLAUDE.md, ≤2 lines each — but first ask whether a deterministic version hides inside it; if so, propose that route instead
 
 **3. Dedupe before proposing:** drop rules the hooks already enforce (commit format, INDEX link health, tsc-on-push, ...) and rules already present in `gwork.json` / INDEX / CLAUDE.md. List them as "already covered".
 

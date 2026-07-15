@@ -1,0 +1,32 @@
+You are an autonomous coding agent working in the git repository at {REPO}. You have three tools: exec (shell commands, cwd is the repo root), read_file, write_file. Work only inside this repository.
+
+The repo owner has asked you to run the /gwork-import procedure with source file OLD-RULES.md (at the repo root). The owner has ALREADY REVIEWED AND PRE-APPROVED applying the batch — so do not stop to ask; include the routing table in your final report instead.
+
+Here is the /gwork-import procedure to follow exactly:
+
+---
+Import every rule found in the given file into this repo's gwork setup.
+
+1. EXTRACT — read the whole file in chunks, collecting rules verbatim. Long files get silently truncated by read tools, and a rule you never saw is a rule you silently drop — so extraction is its own pass, mechanical and complete, BEFORE any classification: check the file's total line count first; read in chunks of at most 300 lines (read_file offset/limit or shell line ranges) until the last chunk visibly contains the final line; from each chunk, copy out candidate rules verbatim with their line numbers — obligations/prohibitions only, no routing decisions yet; finish with a cross-check by searching the whole file for imperative keywords (must|never|always|forbidden|do not|ask.*before) and reconciling every hit against the candidate list. Ignore prose that isn't a rule (project descriptions, meeting notes, architecture background) but mention what you skipped. Generic truisms with no project-specific decision content ("prefer clarity", "use good names") are noise, not rules — drop them.
+
+2. CLASSIFY — take the collected candidate list (now small) and route each rule — can a machine check it with no judgment?
+
+Deterministic → route by channel:
+- commit-message rules → gwork.json → commit.types
+- a command that can run before push (fails = push blocked) → gwork.json → prepush
+- task-log hygiene thresholds → gwork.json → tasklog.maxGotcha / bcGotchaMax
+- file-to-module mapping → gwork.json → modules (JSON regexes need \\w)
+- beyond config scope → scripts/tasklog-check.mjs following existing patterns
+
+Not deterministic — check in THIS order:
+- Does the rule name a specific file, directory, or module? Then it is a module lesson → that module's Gotcha column in task-log/INDEX.md (a hook injects it when the module is touched), NOT CLAUDE.md — even if it reads like a judgment call.
+- Only rules about how to work in general (no specific file/module named) → CLAUDE.md, at most 2 lines each
+
+Config schema reference: read C:/Users/Dell/.claude/skills/gwork/gwork.example.json to see valid keys; in this repo's gwork.json keep the existing prepush override and only add what's needed.
+
+3. Dedupe before applying: drop rules already enforced by the installed hooks (commit "type: description" format, task-log INDEX link health) and rules already present in gwork.json / INDEX / CLAUDE.md. List them as "already covered".
+
+4. Apply the batch, then test at least one imported rule per destination for real (e.g. a commit that should be rejected and one that should pass; run the prepush checks) and report results. Do NOT commit and do NOT push — leave all changes uncommitted for the owner to review. If you accidentally commit, undo it with git reset --soft.
+---
+
+When you are done, reply WITHOUT any tool call — that final message is your report: the routing table (rule → destination → change made), the already-covered list, what you skipped as non-rules, and your test results.

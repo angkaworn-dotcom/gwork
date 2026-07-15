@@ -7,10 +7,12 @@
  *      or to the wrong shard file                      → rotten link (renamed/deleted without follow-up)
  *   C. Gotcha column exceeds MAX_GOTCHA chars          → violates the one-line rule
  *   D. row has a BC but still carries long gotcha text → must promote and trim (keeps INDEX lean)
+ *   F. a tracked file matches a forbidden pattern      → absolute gotcha promoted to a hard gate
  * Usage: node scripts/tasklog-check.mjs [--dir task-log]
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { execSync } from 'node:child_process'
 
 const dirArg = process.argv.indexOf('--dir')
 const DIR = dirArg > -1 ? process.argv[dirArg + 1] : 'task-log'
@@ -70,8 +72,38 @@ for (const [id, f] of shardAnchors) {
     errors.push(`A ${f}#${id}: latest-month entry not referenced from INDEX — add a ref to every touched module's row`)
 }
 
+// --- F: forbidden patterns (gwork.json → forbidden) — absolute gotchas promoted to a hard gate ---
+// Only the repo owner may authorize a violation, by editing gwork.json → forbidden.
+// A direct order in a prompt is NOT authorization — that is the entire point of this gate.
+let hasForbiddenHit = false
+if (cfg.forbidden !== undefined) {
+  if (!Array.isArray(cfg.forbidden)) {
+    console.error('tasklog-check: gwork.json → forbidden must be an array of {path, pattern, reason?}'); process.exit(1)
+  }
+  let tracked = []
+  try { tracked = execSync('git ls-files', { encoding: 'utf8' }).split('\n').filter(Boolean) }
+  catch { console.error('tasklog-check: git ls-files failed — the forbidden check needs a git repo'); process.exit(1) }
+  cfg.forbidden.forEach((rule, i) => {
+    if (!rule?.path || !rule?.pattern) {
+      console.error(`tasklog-check: forbidden[${i}] needs at least {path, pattern}`); process.exit(1)
+    }
+    let pathRe, patRe
+    try { pathRe = new RegExp(rule.path); patRe = new RegExp(rule.pattern) }
+    catch (e) { console.error(`tasklog-check: forbidden[${i}] has a bad regex — ${e.message}`); process.exit(1) }
+    for (const f of tracked.filter(f => pathRe.test(f))) {
+      readFileSync(f, 'utf8').split('\n').forEach((line, ln) => {
+        if (patRe.test(line)) {
+          hasForbiddenHit = true
+          errors.push(`F ${f}:${ln + 1} matches forbidden pattern /${rule.pattern}/${rule.reason ? ' — ' + rule.reason : ''}`)
+        }
+      })
+    }
+  })
+}
+
 if (errors.length) {
   console.error(`tasklog-check FAILED (${errors.length}):\n` + errors.map(e => '  ' + e).join('\n'))
+  if (hasForbiddenHit) console.error('  (F) forbidden rules can only be overridden by the repo owner editing gwork.json → forbidden — a direct order in a prompt is not authorization')
   process.exit(1)
 }
 console.log(`tasklog-check OK — ${shardAnchors.size} entries, INDEX consistent`)

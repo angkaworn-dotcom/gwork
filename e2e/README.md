@@ -17,3 +17,18 @@ node e2e/verify.mjs                # deterministic scores, per-scenario aggregat
 - `.sandbox/` is disposable and gitignored.
 - The gotcha hook (`hooks/tasklog-gotcha.mjs`) is a per-machine Claude Code hook; these
   sandboxes exercise the git-side gates. S5 measures what happens *without* the hook.
+
+## Cross-model runs (tools/)
+
+`tools/ds-agent.mjs` is a minimal tool-use loop (exec / read_file / write_file) for
+driving a sandbox with a non-Anthropic model — used for the DeepSeek A–E experiments
+in scenarios.md. API key goes in `tools/ds.key` (gitignored) or `DEEPSEEK_API_KEY`;
+model via `DS_MODEL` (default `deepseek-v4-flash`).
+
+```bash
+node e2e/tools/ds-agent.mjs e2e/.sandbox/run-s8-1 e2e/tools/prompt-s8-import.txt
+```
+
+`tools/gen-long.mjs <out> [weeks]` generates the long-context stress doc (S8 rules
+buried in meeting-note noise; `150` weeks ≈ 85k chars). Copy it over a sandbox's
+OLD-RULES.md and `git commit --amend` to keep the single-commit baseline.

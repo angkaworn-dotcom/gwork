@@ -12,6 +12,7 @@ One principle: **any rule that can be checked deterministically becomes a hook/s
 | commit format `type: desc`, no `@` (Merge/Revert exempt) | `githooks/commit-msg` | commit rejected |
 | logged work must update INDEX (latest month) | `scripts/tasklog-check.mjs` in pre-push | push blocked |
 | rotten/wrong-shard INDEX links · gotcha too long · BC rows carrying text | tasklog-check | push blocked |
+| absolute prohibitions (`forbidden` patterns in gwork.json) | tasklog-check (check F) | push blocked — a prompt-level order is not an override; only the repo owner is, via gwork.json |
 | read gotchas before touching a module | `hooks/tasklog-gotcha.mjs` (PreToolUse) | auto-injected — the AI never has to remember |
 | Evidence / Confidence gate / Clarify Early / subagents never commit | `CLAUDE.template.md` (prompt) | judgment — can't be automated |
 

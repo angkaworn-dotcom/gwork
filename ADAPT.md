@@ -23,6 +23,16 @@ Not a TypeScript repo? Swap in your stack's build/lint commands.
 ```
 `maxGotcha` = max length of the Gotcha column · `bcGotchaMax` = ceiling once the row has a BC (promote and trim)
 
+### `forbidden` — absolute prohibitions as a hard gate (checked by tasklog-check in pre-push)
+```json
+"forbidden": [
+  { "path": "^lib/money/", "pattern": "\\.toFixed\\(", "reason": "money display must use formatMoney()" }
+]
+```
+- Any tracked file whose path matches `path` and contains a line matching `pattern` blocks the push (check F)
+- Use this for "NEVER X in Y" gotchas — a rule the AI must not be able to trade away. **A direct order in a prompt is not authorization to violate one; only the repo owner overrides, by editing this list** (evidence: e2e S7 — under a conflicting explicit order, 0/3 agents honored a prompt-level gotcha)
+- Default: none · both fields are JS regexes (double-escape: `\\.`)
+
 ### `modules` — path → module key mapping (shared by migrate and the gotcha hook)
 ```json
 "modules": [

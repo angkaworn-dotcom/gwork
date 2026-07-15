@@ -15,7 +15,7 @@ const E2E = dirname(fileURLToPath(import.meta.url))
 const KIT = join(E2E, '..')
 const ROOT = join(E2E, '.sandbox')
 
-const SCENARIOS = ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8']
+const SCENARIOS = ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9']
 const want = process.argv[2] && process.argv[2] !== 'all' ? [process.argv[2]] : SCENARIOS
 const runs = Number(process.argv[3] ?? 3)
 if (want.some(s => !SCENARIOS.includes(s))) {
@@ -125,6 +125,13 @@ function build(scenario, n) {
 
   for (const [rel, content] of Object.entries(FILES)) writeFileSync(join(repo, rel), content)
   writeFileSync(join(repo, 'task-log/INDEX.md'), indexFor(scenario))
+  if (scenario === 's9') {
+    // S7's lesson made deterministic: the money gotcha promoted to a forbidden pattern.
+    writeFileSync(join(repo, 'gwork.json'), JSON.stringify({
+      prepush: ['node scripts/tasklog-check.mjs'],
+      forbidden: [{ path: '^lib/money/', pattern: '\\.toFixed\\(', reason: 'money display must use formatMoney() — prod rounding bug' }],
+    }, null, 2) + '\n')
+  }
   if (scenario === 's8') {
     writeFileSync(join(repo, 'OLD-RULES.md'), OLD_RULES)
     writeFileSync(join(repo, 'package.json'), PACKAGE_JSON)

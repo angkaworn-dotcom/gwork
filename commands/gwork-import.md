@@ -17,6 +17,7 @@ Ignore prose that isn't a rule (project descriptions, meeting notes, architectur
 Deterministic → route by channel:
 - commit-message rules → `gwork.json` → `commit.types`
 - a command that can run before push (fails = push blocked) → `gwork.json` → `prepush`
+- an absolute prohibition tied to files ("NEVER X in Y") expressible as path+pattern regexes → `gwork.json` → `forbidden: [{path, pattern, reason}]` — prefer this over an INDEX gotcha whenever the pattern is greppable; also keep a short INDEX gotcha pointing at the reason
 - task-log hygiene thresholds → `gwork.json` → `tasklog.maxGotcha` / `bcGotchaMax`
 - file-to-module mapping → `gwork.json` → `modules` (JSON regexes need `\\w`)
 - beyond config scope → `scripts/tasklog-check.mjs` / `migrate.mjs` following existing patterns

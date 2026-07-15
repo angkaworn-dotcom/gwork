@@ -15,6 +15,11 @@
     "bcGotchaMax": 80
   },
 
+  "$comment_forbidden": "Absolute prohibitions promoted to a hard gate — tasklog-check fails (push blocked) if any tracked file matching `path` contains a line matching `pattern`. Only the repo owner overrides, by editing this list. Default: none.",
+  "forbidden": [
+    { "path": "^lib/money/", "pattern": "\\.toFixed\\(", "reason": "money display must use formatMoney() — prod rounding bug" }
+  ],
+
   "pathPattern": "(?:modules|app|lib|components|prisma|tests|hooks|scripts)/[\\w\\-./[\\]]+\\.(?:tsx?|mjs|prisma|json|md)",
 
   "modules": [

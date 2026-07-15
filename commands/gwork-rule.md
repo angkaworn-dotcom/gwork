@@ -9,6 +9,7 @@ Add or change the rule the user describes, following the gwork decision tree. Co
 **If yes — enforce it in the system, by channel:**
 1. About commit messages → edit `gwork.json` → `commit.types`
 2. A check runnable before push (command that fails = push blocked) → add to `gwork.json` → `prepush`
+2b. An absolute prohibition tied to files ("NEVER X in Y") expressible as path+pattern regexes → `gwork.json` → `forbidden: [{path, pattern, reason}]` (tasklog-check F blocks the push; only the owner can override, by editing the list) — prefer this over an INDEX gotcha whenever the pattern is greppable
 3. Task-log hygiene thresholds → `gwork.json` → `tasklog.maxGotcha` / `bcGotchaMax`
 4. File-to-module mapping → `gwork.json` → `modules` (JSON regexes need `\\w`)
 5. Beyond config scope (new INDEX check rules, log formats) → edit `scripts/tasklog-check.mjs` / `migrate.mjs` following existing patterns

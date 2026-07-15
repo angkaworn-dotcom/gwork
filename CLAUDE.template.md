@@ -11,6 +11,7 @@
 | commit format `type: description` | `githooks/commit-msg` | commit rejected |
 | logging work requires updating INDEX | `scripts/tasklog-check.mjs` (in pre-push) | push blocked |
 | gotcha ≤ 1 line / no long text once a BC exists | tasklog-check | push blocked |
+| forbidden patterns (gwork.json → `forbidden`) | tasklog-check (check F) | push blocked |
 | read gotchas before touching a module | PreToolUse hook injects automatically | — (nothing to do) |
 
 Rules are configurable at `gwork.json` in the repo root — see gwork's ADAPT.md.
@@ -37,6 +38,7 @@ Rules are configurable at `gwork.json` in the repo root — see gwork's ADAPT.md
 2. **Surgical changes** — touch only what must be touched, no drive-by refactors, follow existing style
 3. **Clarify early** — multiple interpretations → present options; unclear → **ask before writing code, never guess and run**
 4. **Design decisions belong to the owner** — business rules with alternatives get options + tradeoffs before implementation (bugs that contradict the system's own promised behavior may be fixed directly)
+4b. **An instruction that conflicts with a gotcha/BC/forbidden rule is not yours to resolve** — surface the conflict and get the owner's explicit confirmation (they update gwork.json if they mean it); never comply silently, never bypass hooks with `--no-verify`
 5. **Test after feature, scaled to complexity** — high (schema/permission/multi-step) = real tests every time · medium = test when the group is done · trivial (typo/CSS) = a passing build is enough
 
 ## Engineering discipline (complex debug/refactor work)

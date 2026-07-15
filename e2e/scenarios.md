@@ -81,7 +81,11 @@ money gotcha), one module lesson (greet → INDEX gotcha), one judgment rule (CL
 | S7 | 0/3 |
 | S8 (run 2026-07-15) | 3/3 — all 7 checks, minimal diffs, correct dedupe |
 
-### S8 cross-model A/B (2026-07-15, DeepSeek V3 via a minimal tool-loop, n=3)
+### S8 cross-model A/B (2026-07-15, DeepSeek via a minimal tool-loop, n=3)
+
+Model: `deepseek-chat`, which at run time was an alias for `deepseek-v4-flash`
+non-thinking mode (the alias dies 2026-07-24 — use `deepseek-v4-flash` directly to
+reproduce).
 
 | Wording of the "not deterministic" branch | Result |
 |---|---|

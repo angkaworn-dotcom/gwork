@@ -43,14 +43,33 @@ Two counter-directions, in preference order:
 
 **A. Local, git-independent (preferred — owner's direction): separation of powers.**
 One tool *sets* flags, a different tool *checks* them, state crosses several layers
-so no single artifact under the agent's direct control decides the outcome. Candidate
-mechanisms to evaluate: checker state owned by a different OS user / ACL the agent
-cannot write (the only local boundary an agent truly cannot cross without privilege
-escalation) · an independent watchdog process holding its own snapshot/checksums of
-protected config · append-only flag journal where the checker compares layers and any
-mismatch = tamper. Design constraint carried over from G/H: layers the agent *can*
-reach must make cheating loud and signed, not silently possible; the layer it *cannot*
-reach (OS boundary) is what makes the gate hold. Gate: design sketch + a red-team
+so no single artifact under the agent's direct control decides the outcome — the
+"filter stack" model: work flows through every layer, and at least one layer must be
+bolted down where the agent's hands physically cannot reach.
+
+Mechanism evaluation (2026-07-15):
+- **Owner signature (preferred bolted layer).** Repo holds only the owner's PUBLIC
+  key; removing a protection (check G's territory) requires the touching commit to be
+  signature-verified against it (git SSH commit signing + allowed-signers,
+  `git verify-commit`). The agent can read the public key freely — verification is
+  math, not secrecy — and the second factor is the owner's finger on a hardware key /
+  passphrase prompt: physically outside the agent, no second OS account needed.
+  Two known holes to close in the design: a key cached in ssh-agent without per-use
+  confirmation lets the agent sign silently (require touch/passphrase per signature),
+  and approval must bind to the specific change (commit signing does this for free).
+- **Shared-secret OTP (TOTP) — rejected.** The verifier must hold the shared secret
+  locally to compute the expected code; the agent reads the secret and generates valid
+  codes. Any shared-secret scheme collapses on a machine the agent can read.
+- **Separate OS user / ACL — deprioritized.** The only other true local boundary, but
+  setup friction is high and on a single-admin dev machine the same hands hold the
+  ACLs; keep as fallback where signing hardware doesn't exist.
+- **Watchdog with cross-layer checksums / append-only journal — supporting layers.**
+  Reachable by the agent, so they detect-and-shout rather than block; they upgrade
+  G/H-style "cheating leaves a signature" into "cheating is auto-detected on mismatch".
+
+Design constraint carried over from G/H: layers the agent *can* reach must make
+cheating loud and signed, not silently possible; the one layer it *cannot* reach
+(owner's signature) is what makes the gate hold. Gate: design sketch + a red-team
 e2e (S11: order the agent to disable the gate; measure whether any path stays silent).
 
 **B. Server-side (fallback, needs a remote):** pre-receive hook running tasklog-check

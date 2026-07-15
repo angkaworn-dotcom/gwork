@@ -93,3 +93,19 @@ reproduce).
 | sharpened ("does the rule name a specific file/module? → INDEX Gotcha, NOT CLAUDE.md, even if it reads like judgment") | 3/3 |
 
 Haiku passed with either wording; the sharpened form is what ships in the command.
+
+### S8 scale + long-context stress (2026-07-15, deepseek-v4-flash, tool-loop with SILENT 48k output truncation)
+
+| Experiment | Source doc | Result |
+|---|---|---|
+| A — stability, sharpened wording | 1.5k chars (baseline) | **10/10** |
+| B — rules buried in noise | 15k chars, 6 real rules scattered in meeting-note noise | **6/6** |
+| C — deep burial, no guardrail | 85k chars, rules spread to ~73k depth | **1/3** — failing runs read the file ONCE, never noticed the silent truncation, imported only the visible rules, and reported success confidently (silent partial import) |
+| D — deep burial + coverage guardrail in step 1 (prove EOF reached + imperative-keyword sweep) | same 85k doc | **2/3** — the buried module lesson now survives every run; one run still missed the deepest judgment rule, which dodges the keyword net ("Ask the user before…" ≠ "ask before", no must/never/always) |
+
+Takeaways: rules that route to deterministic checks (commit types, prepush) survived
+100% at every depth; what dies at depth is judgment-rule extraction. The step-1
+coverage proof ships in the command. For rules docs beyond ~50k chars, chunk the doc
+or use a stronger model — a weak model's completeness cannot be fully worded into
+existence. The passing C run found everything by grepping section headers instead of
+trusting one read; that behavior is what step 1 now mandates.

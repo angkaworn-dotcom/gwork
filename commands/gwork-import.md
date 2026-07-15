@@ -4,7 +4,11 @@ description: Import rules in bulk from a file (old CLAUDE.md, team conventions, 
 
 Import every rule found in the given file into this repo's gwork setup. Communicate with the user in their language.
 
-**1. Read the source file** (`$ARGUMENTS` — a path to an old CLAUDE.md, a conventions doc, or any rules file). If no path was given, ask for one. Split it into discrete rules — one obligation/prohibition per item. Ignore prose that isn't a rule (project descriptions, commands lists, architecture notes) but mention what you skipped.
+**1. Read the source file COMPLETELY** (`$ARGUMENTS` — a path to an old CLAUDE.md, a conventions doc, or any rules file). If no path was given, ask for one. Long files get silently truncated by read tools, and a rule you never saw is a rule you silently drop — so prove full coverage before extracting:
+- check the file's total line count first, and read in chunks until you have seen the actual last line;
+- then search the whole file for imperative keywords (`must|never|always|forbidden|do not|before every|ask before`) and reconcile every hit with your extracted list — each match is either a rule you captured or prose you consciously discarded.
+
+Split the content into discrete rules — one obligation/prohibition per item. Ignore prose that isn't a rule (project descriptions, commands lists, architecture notes) but mention what you skipped. Generic truisms with no project-specific decision content ("prefer clarity", "use good names") are noise, not rules — drop them; CLAUDE.md frugality outranks completeness of platitudes.
 
 **2. Classify each rule with the /gwork-rule decision tree** — can a machine check it with no judgment?
 

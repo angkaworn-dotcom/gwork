@@ -45,6 +45,13 @@ Let `<SKILL>` = this skill folder, `<REPO>` = the target repo.
    ```
    The hook finds `task-log/INDEX.md` by walking up from cwd — one global copy serves every repo with the kit installed.
 6. **CLAUDE.md:** use `CLAUDE.template.md` as the skeleton — fill `<PROJECT_NAME>`, commands, SSOT, then **move long gotchas from the old CLAUDE.md into Known Bug Classes (one line per BC-xxx)**. Keep existing architecture/project specifics; cut only rules the hooks now enforce.
+7. **Sentinel (optional, recommended when an agent runs the repo autonomously):** tamper-detector for the enforcement machinery itself — snapshots the hooks/checker/`core.hooksPath`/guards outside the repo and blocks a push (and denies edits) if any of them drifts from the owner's snapshot. As the **owner**, on a terminal:
+   ```bash
+   cp <SKILL>/scripts/gwork-sentinel.mjs <REPO>/scripts/
+   node <REPO>/scripts/gwork-sentinel.mjs install            # copies to ~/.gwork/bin
+   node <REPO>/scripts/gwork-sentinel.mjs init --repo <REPO>  # interactive y/N snapshot
+   ```
+   After any legitimate change to the hooks or `gwork.json` guards, re-run `node scripts/gwork-sentinel.mjs update` (interactive) to re-snapshot. It closes silent machinery tampering (hooksPath removal, neutered checker); it does **not** close `git push --no-verify` — that needs the server side (see ROADMAP).
 
 ## Verify after install
 
@@ -53,6 +60,7 @@ node scripts/tasklog-check.mjs            # must be green
 git commit --allow-empty -m "bad"         # must be blocked by commit-msg (then reset)
 ```
 Test the hook: edit a file in a module that has a gotcha in INDEX → injection appears the first time, silent the second time.
+If the sentinel is installed, `node e2e/tools/unit.mjs` from the kit exercises it end-to-end (15 deterministic cases).
 
 ## Boundaries
 

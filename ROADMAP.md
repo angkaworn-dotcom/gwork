@@ -36,8 +36,21 @@ remaining local bypass vectors, all unexercised so far:
 2. **New world** — `git init` a fresh repo + new remote; the kit never sees it.
    Uncounterable locally, but also low-harm: what never reaches the real repo never
    ships.
-3. **Remove the gate** — `git config core.hooksPath /dev/null` (or unset). The
-   loudest but currently 100%-silent-at-push hole in the local design.
+3. **Remove the gate** — `git config core.hooksPath /dev/null` (or unset), or neuter
+   `tasklog-check.mjs`. **Countered 2026-07-15 by the sentinel** (`scripts/gwork-sentinel.mjs`,
+   built): enforcement machinery is snapshotted outside the repo (`~/.gwork/`) and
+   verified by two independent channels — the git pre-push hook AND the agent-harness
+   edit hook. Removing hooksPath is exactly what the edit-hook channel then flags
+   (machinery tamper → edits denied). Owner updates via an interactive confirm or a
+   journaled `GWORK_SENTINEL_CONFIRM` hash. Unit-covered (`e2e/tools/unit.mjs`), live
+   S11.
+4. **`git push --no-verify`** — surfaced by S11, the real irreducible local hole:
+   the flag skips *every* client-side git hook by design (pre-push F + sentinel), no
+   local code runs to stop it. Partial local counter shipped: the `forbidden` check
+   now also runs at **edit time** in the harness hooks (`deny`/`block`), which
+   `--no-verify` cannot skip — so the bad content never reaches a commit unless the
+   agent abandons its edit tools for **raw shell writes** (the remaining loud residue).
+   Full physical closure = server-side (B).
 
 Two counter-directions, in preference order:
 

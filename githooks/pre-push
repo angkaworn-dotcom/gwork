@@ -2,6 +2,14 @@
 # pre-push — a real block, not a polite request (install: git config core.hooksPath githooks)
 # Edit the check list at gwork.json → prepush (array of commands — run in order, any failure blocks the push)
 set -e
+# sentinel (if installed): the enforcement machinery itself must match the owner snapshot
+SENTINEL="${GWORK_HOME:-$HOME/.gwork}/bin/gwork-sentinel.mjs"
+if [ -f "$SENTINEL" ]; then
+  node "$SENTINEL" verify --repo "$(pwd)" || {
+    echo "[pre-push] BLOCKED — gwork-sentinel found tampered enforcement state (owner: node scripts/gwork-sentinel.mjs update)" >&2
+    exit 1
+  }
+fi
 CMDS=$(node -e "let c={};try{c=require(process.cwd()+'/gwork.json')}catch(e){if(e.code!=='MODULE_NOT_FOUND'){console.error('pre-push: cannot parse gwork.json — '+e.message);process.exit(1)}};(Array.isArray(c.prepush)&&c.prepush.length?c.prepush:['npx tsc --noEmit','node scripts/tasklog-check.mjs']).forEach(x=>console.log(x))")
 printf '%s\n' "$CMDS" |
 while IFS= read -r cmd; do

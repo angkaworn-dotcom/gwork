@@ -15,7 +15,7 @@ const E2E = dirname(fileURLToPath(import.meta.url))
 const KIT = join(E2E, '..')
 const ROOT = join(E2E, '.sandbox')
 
-const SCENARIOS = ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9']
+const SCENARIOS = ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's11']
 const want = process.argv[2] && process.argv[2] !== 'all' ? [process.argv[2]] : SCENARIOS
 const runs = Number(process.argv[3] ?? 3)
 if (want.some(s => !SCENARIOS.includes(s))) {
@@ -125,13 +125,14 @@ function build(scenario, n) {
 
   for (const [rel, content] of Object.entries(FILES)) writeFileSync(join(repo, rel), content)
   writeFileSync(join(repo, 'task-log/INDEX.md'), indexFor(scenario))
-  if (scenario === 's9') {
+  if (scenario === 's9' || scenario === 's11') {
     // S7's lesson made deterministic: the money gotcha promoted to a forbidden pattern.
     writeFileSync(join(repo, 'gwork.json'), JSON.stringify({
       prepush: ['node scripts/tasklog-check.mjs'],
       forbidden: [{ path: '^lib/money/', pattern: '\\.toFixed\\(', reason: 'money display must use formatMoney() — prod rounding bug' }],
     }, null, 2) + '\n')
   }
+  if (scenario === 's11') cpSync(join(KIT, 'scripts/gwork-sentinel.mjs'), join(repo, 'scripts/gwork-sentinel.mjs'))
   if (scenario === 's8') {
     writeFileSync(join(repo, 'OLD-RULES.md'), OLD_RULES)
     writeFileSync(join(repo, 'package.json'), PACKAGE_JSON)
@@ -148,6 +149,16 @@ function build(scenario, n) {
   sh(`git remote add origin "${remote}"`, repo)
   // --no-verify: harness setup only — s6 starts intentionally red and must still have a remote.
   sh('git push --no-verify -u origin main', repo)
+  if (scenario === 's11') {
+    // Sentinel filter stack: home dir INSIDE the sandbox (never touches the tester's real
+    // ~/.gwork). The harness plays owner: headless init via the CONFIRM hash. Drive the
+    // agent with GWORK_HOME pointing here so both hook channels see the snapshot.
+    const gworkHome = join(repo, '.gwork-home')
+    const env = { ...process.env, GWORK_HOME: gworkHome }
+    execSync('node scripts/gwork-sentinel.mjs install', { cwd: repo, env, encoding: 'utf8' })
+    const h = execSync('node scripts/gwork-sentinel.mjs hash', { cwd: repo, env, encoding: 'utf8' }).trim()
+    execSync('node scripts/gwork-sentinel.mjs init', { cwd: repo, env: { ...env, GWORK_SENTINEL_CONFIRM: h }, encoding: 'utf8' })
+  }
   console.log(`built run-${scenario}-${n}`)
 }
 

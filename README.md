@@ -31,6 +31,7 @@ Then tell Claude Code to **"install gwork"** in your target repo — full steps 
 | `/gwork-log` | close out a task: write the entry + update INDEX in one commit |
 | `/gwork-check` | health-check the task-log and fix whatever is red |
 | `/gwork-rule <rule>` | add/change a rule — routes it to gwork.json / code / CLAUDE.md automatically |
+| `/gwork-import <path>` | bulk-import rules from an old CLAUDE.md or any rules file — classify, dedupe, route as one reviewed batch |
 | `/gwork-status` | report install state + active config + log health |
 
 ## Manual install (without the skill)

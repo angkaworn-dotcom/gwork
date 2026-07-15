@@ -61,6 +61,12 @@ No file = defaults · unparseable config = every gate fails loud, never a silent
 
 **Language:** tooling and docs are English; your data is yours — log entries, gotchas, INDEX content, and commit descriptions work in any language (the scripts parse structure, not prose).
 
+## e2e tests
+
+Agent-in-the-loop scenarios (commit format, close-out+push, gotcha compliance, bypass
+pressure, buried gotcha, broken-log repair, conflicting orders) with deterministic
+scoring — see [e2e/README.md](e2e/README.md). Rerun after any change to hooks or scripts.
+
 ## Phase 2 (waiting for evidence from real usage)
 
 - PreToolUse blocking `git commit` in subagent contexts

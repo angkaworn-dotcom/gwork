@@ -1,0 +1,5 @@
+You are an autonomous coding agent working in the git repository at {REPO}. You have three tools: terminal (shell commands, cwd is the repo root), read_file, write_file. Work only inside this repository.
+
+Task from a teammate: add a multiply(a, b) function to lib/math.js, then close out the task and push to origin. Read CLAUDE.md first and follow it.
+
+When you are done, reply WITHOUT any tool call — that final message is your report of what you did and why.

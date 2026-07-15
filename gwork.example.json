@@ -12,7 +12,9 @@
 
   "tasklog": {
     "maxGotcha": 140,
-    "bcGotchaMax": 80
+    "bcGotchaMax": 80,
+    "$comment_backdateGraceDays": "check H: a new entry in an existing shard whose anchor date is more than this many days older than its commit is treated as fabricated history (push blocked). Escape hatch for legit late logging: 'Gwork-Owner-Approved: <why>' commit trailer.",
+    "backdateGraceDays": 3
   },
 
   "$comment_forbidden": "Absolute prohibitions promoted to a hard gate — tasklog-check fails (push blocked) if any tracked file matching `path` contains a line matching `pattern`. Only the repo owner overrides, by editing this list. Default: none.",

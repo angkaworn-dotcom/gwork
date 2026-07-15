@@ -51,7 +51,7 @@ cp hooks/tasklog-gotcha.mjs ~/.claude/hooks/
 ```
 ```json
 "hooks": { "PreToolUse": [ { "matcher": "Edit|Write|MultiEdit",
-  "hooks": [{ "type": "command", "command": "node \"<ABS>/.claude/hooks/tasklog-gotcha.mjs\"" }] } ] }
+  "hooks": [{ "type": "command", "command": "node \"<ABS>/.claude/hooks/tasklog-gotcha.mjs\"", "timeout": 15 }] } ] }
 ```
 
 ## Configure rules freely at `gwork.json`

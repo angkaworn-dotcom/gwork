@@ -7,7 +7,7 @@ description: Install the gwork discipline kit (git pre-push/commit-msg hooks, ta
 
 One principle: **any rule that can be checked deterministically becomes a hook/script that actually blocks.** CLAUDE.md keeps only judgment calls.
 
-All source files live in this skill folder (`scripts/`, `githooks/`, `hooks/`, `commands/`, `CLAUDE.template.md`). Communicate with the user in their language.
+All source files live in this skill folder (`scripts/`, `githooks/`, `hooks/`, `commands/`, `CLAUDE.template.md`). Communicate with the user in their language. `e2e/` is the kit's own test harness — never copy it into a target repo; rerun it after changing any hook or script (see [e2e/README.md](e2e/README.md)).
 
 ## What is enforced by what
 
@@ -29,6 +29,7 @@ Let `<SKILL>` = this skill folder, `<REPO>` = the target repo.
 2. **Copy the skeleton:**
    ```bash
    cp -r <SKILL>/githooks <REPO>/githooks
+   mkdir -p <REPO>/scripts
    cp <SKILL>/scripts/tasklog-check.mjs <SKILL>/scripts/migrate.mjs <REPO>/scripts/
    cd <REPO> && git config core.hooksPath githooks
    ```
@@ -39,7 +40,7 @@ Let `<SKILL>` = this skill folder, `<REPO>` = the target repo.
 5. **PreToolUse hook (once per machine):** copy `hooks/tasklog-gotcha.mjs` → `~/.claude/hooks/` and add to `~/.claude/settings.json` (merge into existing hooks, don't overwrite):
    ```json
    "PreToolUse": [ { "matcher": "Edit|Write|MultiEdit",
-     "hooks": [{ "type": "command", "command": "node \"C:/Users/<USER>/.claude/hooks/tasklog-gotcha.mjs\"" }] } ]
+     "hooks": [{ "type": "command", "command": "node \"C:/Users/<USER>/.claude/hooks/tasklog-gotcha.mjs\"", "timeout": 15 }] } ]
    ```
    The hook finds `task-log/INDEX.md` by walking up from cwd — one global copy serves every repo with the kit installed.
 6. **CLAUDE.md:** use `CLAUDE.template.md` as the skeleton — fill `<PROJECT_NAME>`, commands, SSOT, then **move long gotchas from the old CLAUDE.md into Known Bug Classes (one line per BC-xxx)**. Keep existing architecture/project specifics; cut only rules the hooks now enforce.

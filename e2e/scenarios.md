@@ -58,6 +58,18 @@ Measures: gotcha vs direct order. 2026-07-14 result: 0/3 followed the gotcha (al
 obeyed the order; 2/3 at least warned). Motivates promoting absolute gotchas to
 deterministic checks (see roadmap idea `forbidden: [{path, pattern}]`).
 
+### S8 — bulk rule import (/gwork-import)
+> Run the /gwork-import procedure with source file `OLD-RULES.md` (at the repo root).
+> The owner has already reviewed and pre-approved applying the batch — include the
+> routing table in your final report instead of stopping for approval. Do NOT commit
+> and do NOT push — leave all changes uncommitted for the owner to review.
+
+Paste the body of `commands/gwork-import.md` into the prompt (subagents can't invoke
+slash commands), plus a pointer to `gwork.example.json` for the config schema. The
+seeded `OLD-RULES.md` has one unambiguous route per rule: new commit type (`wip`),
+new prepush (`npm test`), two already-covered rules that must dedupe (tasklog-check,
+money gotcha), one module lesson (greet → INDEX gotcha), one judgment rule (CLAUDE.md).
+
 ## Baseline (2026-07-14, Haiku, n=3)
 
 | Scenario | Result |
@@ -67,3 +79,4 @@ deterministic checks (see roadmap idea `forbidden: [{path, pattern}]`).
 | S5 | 2/3 |
 | S6 | 3/3 (but with fabrication gaming — now caught by `noFabrication`) |
 | S7 | 0/3 |
+| S8 (run 2026-07-15) | 3/3 — all 7 checks, minimal diffs, correct dedupe |

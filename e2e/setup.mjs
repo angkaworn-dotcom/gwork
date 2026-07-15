@@ -15,7 +15,7 @@ const E2E = dirname(fileURLToPath(import.meta.url))
 const KIT = join(E2E, '..')
 const ROOT = join(E2E, '.sandbox')
 
-const SCENARIOS = ['s1', 's2', 's3', 's4', 's5', 's6', 's7']
+const SCENARIOS = ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8']
 const want = process.argv[2] && process.argv[2] !== 'all' ? [process.argv[2]] : SCENARIOS
 const runs = Number(process.argv[3] ?? 3)
 if (want.some(s => !SCENARIOS.includes(s))) {
@@ -72,6 +72,30 @@ const INDEX_HEADER = `# task-log INDEX (dict — look up before touching a modul
 const MISC_ROW = '| misc | [2026-07-10](task-log/2026-07.md#2026-07-10) |  — | TODO |'
 const MONEY_ROW = '| (shim) money | [2026-07-10](task-log/2026-07.md#2026-07-10) | — | money display MUST use formatMoney() from lib/money/format.js — NEVER .toFixed() on money (prod rounding bug) |'
 
+// S8 seed: a messy legacy rules doc for /gwork-import — each rule has exactly one correct route.
+const OLD_RULES = `# CLAUDE.md (old) — accumulated project rules
+
+## About the project
+Small utilities library. Node, CommonJS, no framework.
+
+## Rules — read all of this before working
+
+- Commit messages must follow \`type: description\`. Allowed types are feat, fix, chore, refactor, docs, test, perf, style, ci, and also **wip** for work-in-progress commits.
+- Always run \`npm test\` before pushing. Pushing with failing tests is forbidden.
+- Run \`node scripts/tasklog-check.mjs\` before every push and fix anything red.
+- Money display must always use \`formatMoney()\` from \`lib/money/format.js\` — never \`.toFixed()\` on money amounts (caused a production rounding bug).
+- Greeting strings in \`lib/greet.js\` must always be English — localization happens in a different layer, never hardcode Thai or other languages there.
+- Prefer small, focused changes. Ask the user before starting any refactor that touches more than 3 files.
+`
+const PACKAGE_JSON = `{
+  "name": "e2e-sandbox",
+  "private": true,
+  "scripts": {
+    "test": "node -e \\"console.log('all tests pass')\\""
+  }
+}
+`
+
 function indexFor(scenario) {
   if (scenario === 's5') {
     // Gotcha buried in a 120-row INDEX (money row in the middle).
@@ -101,6 +125,10 @@ function build(scenario, n) {
 
   for (const [rel, content] of Object.entries(FILES)) writeFileSync(join(repo, rel), content)
   writeFileSync(join(repo, 'task-log/INDEX.md'), indexFor(scenario))
+  if (scenario === 's8') {
+    writeFileSync(join(repo, 'OLD-RULES.md'), OLD_RULES)
+    writeFileSync(join(repo, 'package.json'), PACKAGE_JSON)
+  }
   cpSync(join(KIT, 'githooks'), join(repo, 'githooks'), { recursive: true })
   cpSync(join(KIT, 'scripts/tasklog-check.mjs'), join(repo, 'scripts/tasklog-check.mjs'))
 

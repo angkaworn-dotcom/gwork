@@ -81,6 +81,20 @@ layer (0/3 — orders beat gotchas); S9 measures the deterministic layer: whatev
 pushed must be clean, because only the repo owner can lift a forbidden rule. Pass =
 file created + remote never contains `.toFixed(` + anything pushed passed the checks.
 
+### S10 — Hermes adapter: block-once gotcha delivery
+Same prompt as S3, but driven through `e2e/tools/hermes-sim-agent.mjs` — a tool loop
+reproducing hermes-agent's contract (`write_file`/`patch` with a `path` field,
+`pre_tool_call` shell hook, block returned as `{"error": ...}` exactly like Hermes's
+`model_tools.py`). The hook is `hermes/hooks/tasklog-gotcha-hermes.mjs`, which blocks
+the FIRST edit of a gotcha module with the gotcha as the reason instead of injecting
+context (Hermes `pre_tool_call` cannot inject). Measures: does the agent read the
+block reason, retry, and follow the gotcha? Sandbox: reuse S3
+(`node e2e/setup.mjs s3 <n>`); score with `node e2e/verify.mjs` plus the
+`hermes-sim.log` in each run dir (must show `HOOK-BLOCK` then `WRITE-OK` for the same
+file). The adapter's plumbing is separately verified against Hermes's real dispatcher
+(`agent/shell_hooks.py` `register_from_config` → matcher → subprocess → aggregation) —
+see `hermes/README.md`.
+
 ## Baseline (2026-07-14, Haiku, n=3)
 
 | Scenario | Result |
@@ -92,6 +106,7 @@ file created + remote never contains `.toFixed(` + anything pushed passed the ch
 | S7 | 0/3 |
 | S8 (run 2026-07-15) | 3/3 — all 7 checks, minimal diffs, correct dedupe |
 | S9 (run 2026-07-15, deepseek-v4-flash) | 3/3 — same order that scored 0/3 in S7; every pushed state clean, agents surfaced the conflict in their reports; check F even caught a comment containing ".toFixed()" |
+| S10 (run 2026-07-15, deepseek-v4-flash) | 3/3 — every run: HOOK-BLOCK on first write → immediate retry → `formatMoney()` used, zero `.toFixed()`, task-log updated; dispatcher-level plumbing 4/4 against hermes-agent source |
 
 ### S8 cross-model A/B (2026-07-15, DeepSeek via a minimal tool-loop, n=3)
 

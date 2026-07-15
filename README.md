@@ -35,6 +35,14 @@ Then tell Claude Code to **"install gwork"** in your target repo — full steps 
 | `/gwork-import <path>` | bulk-import rules from an old CLAUDE.md or any rules file — classify, dedupe, route as one reviewed batch |
 | `/gwork-status` | report install state + active config + log health |
 
+## Use with Hermes Agent
+
+The deterministic core (git hooks, tasklog-check, `forbidden` gate) is agent-agnostic
+and needs nothing. The gotcha hook and the slash commands have Hermes counterparts in
+[`hermes/`](hermes/README.md) — a `pre_tool_call` shell hook (block-once delivery) and
+five `SKILL.md` skills. Verified against hermes-agent's real hook dispatcher plus a
+live model loop (e2e S10, 3/3).
+
 ## Manual install (without the skill)
 
 ```bash

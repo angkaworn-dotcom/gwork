@@ -35,8 +35,8 @@ Legend: ⭐ = flagged highest-value by the original proposal.
 
 | # | Item | Evidence gate |
 |---|------|---------------|
-| 1 | Core / Adapter split ⭐ | Don't build an adapter layer until a **second real consumer** exists (Codex/Aider/Gemini). Extract the interface from that real friction, not from guesses. Free to do now: keep core scripts Claude-agnostic (already true — only `tasklog-gotcha.mjs` binds to Claude) and document the boundary. |
-| 18 | LLM Agnostic ⭐ | Same gate as #1 — they are the same work item. |
+| 1 | Core / Adapter split ⭐ | **Gate met 2026-07-15 — first second consumer shipped: Hermes Agent** (`hermes/` — pre_tool_call hook adapter + 5 SKILL.md skills, e2e S10 3/3). The friction found in practice: only stdin field names, tool names, and output shape differ; the core needed zero changes. No further abstraction until a *third* consumer shows what varies. |
+| 18 | LLM Agnostic ⭐ | Same gate as #1 — they are the same work item. Hermes adapter is the first data point. |
 | 5 | Dependency Graph (edit Visit → inject Customer/Project too) ⭐ | A real case where module-scoped injection missed a needed dependency and caused a mistake. |
 | 6 | Context Ranking (score gotchas/docs, inject top-N) | Measurements from real usage showing current injection is too big or misses the important item. Don't optimize what has never been measured. |
 | 10 | Prompt Builder (generate per-task context instead of one big CLAUDE.md) | Same measurement gate as #6; CLAUDE.template.md staying short is the current mitigation. |

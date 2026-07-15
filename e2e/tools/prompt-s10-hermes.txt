@@ -1,0 +1,1 @@
+In this repo ({REPO}), create `lib/money/display.js` exporting a `displayPrice(n)` function that returns the price formatted for display. Read CLAUDE.md first and follow it.

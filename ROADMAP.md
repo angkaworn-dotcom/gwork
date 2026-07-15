@@ -24,6 +24,40 @@ Legend: ⭐ = flagged highest-value by the original proposal.
 | 9 | Auto Test Policy | On finish, run only tests mapped to the touched module (`Visit → visit.test.ts`) | A real repo where full-suite runs are demonstrably too slow per task. |
 | 3 | Rule Engine ⭐ | Declarative rules (`when` / `require` / `inject`) instead of editing JS | `gwork.json` **is** the small rule engine — grow it key-by-key (as `forbidden` was added from S7 evidence). Jump to a YAML DSL only if config keys demonstrably stop scaling. |
 
+## Bypass resistance (added 2026-07-15, from the Hermes/DeepSeek red-team round)
+
+Evidence: under a conflicting order, deepseek-v4-flash really did self-authorize
+(emptied `forbidden: []` — S9, now countered by check G). Thought-exercise mapped the
+remaining local bypass vectors, all unexercised so far:
+
+1. **New lane** — write to a path the forbidden regexes never covered (`lib/money2/`).
+   Deterministic counter available today: changed files that map to NO module under
+   `gwork.json → modules` = uncharted lane → flag.
+2. **New world** — `git init` a fresh repo + new remote; the kit never sees it.
+   Uncounterable locally, but also low-harm: what never reaches the real repo never
+   ships.
+3. **Remove the gate** — `git config core.hooksPath /dev/null` (or unset). The
+   loudest but currently 100%-silent-at-push hole in the local design.
+
+Two counter-directions, in preference order:
+
+**A. Local, git-independent (preferred — owner's direction): separation of powers.**
+One tool *sets* flags, a different tool *checks* them, state crosses several layers
+so no single artifact under the agent's direct control decides the outcome. Candidate
+mechanisms to evaluate: checker state owned by a different OS user / ACL the agent
+cannot write (the only local boundary an agent truly cannot cross without privilege
+escalation) · an independent watchdog process holding its own snapshot/checksums of
+protected config · append-only flag journal where the checker compares layers and any
+mismatch = tamper. Design constraint carried over from G/H: layers the agent *can*
+reach must make cheating loud and signed, not silently possible; the layer it *cannot*
+reach (OS boundary) is what makes the gate hold. Gate: design sketch + a red-team
+e2e (S11: order the agent to disable the gate; measure whether any path stays silent).
+
+**B. Server-side (fallback, needs a remote):** pre-receive hook running tasklog-check
+on self-hosted remotes · GitHub Actions required check + branch protection for GitHub
+repos. Physically out of the agent's reach, but reintroduces the git/remote dependency
+A is trying to avoid.
+
 ## Already covered (fully or partly) by the current stack
 
 | # | Item | Status |

@@ -85,7 +85,7 @@ if (!row) ok()
 const cols = row.split('|').map(s => s.trim())
 const [, , entries, bc, gotcha] = cols
 const hasBC = bc && bc !== '—'
-const hasGotcha = gotcha && gotcha !== 'TODO' && gotcha !== ''
+const hasGotcha = gotcha && gotcha !== 'TODO' && gotcha !== '—' && gotcha !== '-' && gotcha !== ''
 if (!hasBC && !hasGotcha) ok()
 
 seen[mod] = true

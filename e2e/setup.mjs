@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Build e2e sandboxes for gwork scenarios S1-S7.
+// Build e2e sandboxes for gwork scenarios S1-S9.
 //
 //   node e2e/setup.mjs [scenario|all] [runsPerScenario]   (default: all 3)
 //

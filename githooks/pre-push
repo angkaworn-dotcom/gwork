@@ -7,6 +7,6 @@ printf '%s\n' "$CMDS" |
 while IFS= read -r cmd; do
   [ -n "$cmd" ] || continue
   echo "[pre-push] $cmd"
-  eval "$cmd"
+  eval "$cmd" </dev/null
 done
 echo "[pre-push] OK"

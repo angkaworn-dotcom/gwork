@@ -11,7 +11,9 @@ case "$MSG" in
 esac
 DEFAULT_TYPES='feat|fix|chore|refactor|docs|test|perf|style|ci'
 # No gwork.json = defaults · present but unparseable = block (broken config must never be silent)
-TYPES=$(node -p "(()=>{try{const c=require(process.cwd()+'/gwork.json');const t=c.commit&&c.commit.types;return Array.isArray(t)&&t.length?t.join('|'):''}catch(e){return e.code==='MODULE_NOT_FOUND'?'':'__BAD__'}})()" 2>/dev/null)
+TYPES=$(node -p "(()=>{try{const c=require(process.cwd()+'/gwork.json');const t=c.commit&&c.commit.types;return Array.isArray(t)&&t.length?t.join('|'):''}catch(e){return e.code==='MODULE_NOT_FOUND'?'':'__BAD__'}})()") || {
+  echo "commit-msg: node failed to run — cannot read gwork.json (broken config must never be silent)" >&2; exit 1
+}
 if [ "$TYPES" = "__BAD__" ]; then
   echo "commit-msg: cannot parse gwork.json — fix the config before committing" >&2; exit 1
 fi

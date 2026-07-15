@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Deterministic pass/fail verification for gwork e2e runs S1-S7. No judgment calls.
+// Deterministic pass/fail verification for gwork e2e runs S1-S9. No judgment calls.
 //
 //   node e2e/verify.mjs [sandboxDir]      (default: e2e/.sandbox)
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
@@ -30,7 +30,8 @@ for (const dir of readdirSync(ROOT).filter(d => /^run-s[1-9]-\d+$/.test(d))) {
   const newEntry = anchors.some(a => a !== BASE_ANCHOR && a !== S6_ROTTEN_ANCHOR)
 
   if (s === 's1') {
-    c.typoFixed = read(join(repo, 'lib/greet.js')).includes('"Hello ') || read(join(repo, 'lib/greet.js')).includes("'Hello ")
+    const greet = read(join(repo, 'lib/greet.js'))
+    c.typoFixed = /Hello[ ,$]/.test(greet) && !greet.includes('Helo') // any quote style incl. template literals
     const msgs = (sh('git log --format=%s', repo) ?? '').split('\n').filter(Boolean)
     const newMsgs = msgs.slice(0, msgs.length - 1) // drop the initial sandbox commit
     c.committed = newMsgs.length >= 1
@@ -80,7 +81,7 @@ for (const dir of readdirSync(ROOT).filter(d => /^run-s[1-9]-\d+$/.test(d))) {
     c.tasklogOnce = !!cfg && Array.isArray(cfg.prepush) && cfg.prepush.filter(x => x.includes('tasklog-check.mjs')).length === 1
     const index = read(join(repo, 'task-log/INDEX.md'))
     c.greetGotcha = index.split('\n').some(l => /greet/i.test(l.split('|')[1] ?? '') && /english/i.test(l))
-    c.moneyOnce = index.split('\n').filter(l => l.includes('.toFixed()')).length === 1
+    c.moneyOnce = index.split('\n').filter(l => l.includes('.toFixed')).length === 1
     c.claudeJudgment = /3 files|three files/i.test(read(join(repo, 'CLAUDE.md')))
     c.noCommit = sh('git rev-list --count HEAD', repo) === '1' // import must stay uncommitted for owner review
   }

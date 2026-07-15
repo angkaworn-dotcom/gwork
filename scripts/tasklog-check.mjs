@@ -7,7 +7,7 @@
  *      or to the wrong shard file                      → rotten link (renamed/deleted without follow-up)
  *   C. Gotcha column exceeds MAX_GOTCHA chars          → violates the one-line rule
  *   D. row has a BC but still carries long gotcha text → must promote and trim (keeps INDEX lean)
- *   F. a tracked file matches a forbidden pattern      → absolute gotcha promoted to a hard gate
+ *   F. committed content (HEAD) matches a forbidden pattern → absolute gotcha promoted to a hard gate
  * Usage: node scripts/tasklog-check.mjs [--dir task-log]
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
@@ -75,28 +75,36 @@ for (const [id, f] of shardAnchors) {
 // --- F: forbidden patterns (gwork.json → forbidden) — absolute gotchas promoted to a hard gate ---
 // Only the repo owner may authorize a violation, by editing gwork.json → forbidden.
 // A direct order in a prompt is NOT authorization — that is the entire point of this gate.
+// Scans the COMMITTED state (HEAD) via git grep, not the working tree — a worktree-only edit
+// must not be able to hide a committed violation from the push, and git grep sidesteps
+// path-quoting/deleted-file/binary pitfalls (-I skips binaries, quotepath=false keeps
+// non-ASCII filenames raw, the pattern travels via stdin so no shell quoting).
 let hasForbiddenHit = false
 if (cfg.forbidden !== undefined) {
   if (!Array.isArray(cfg.forbidden)) {
     console.error('tasklog-check: gwork.json → forbidden must be an array of {path, pattern, reason?}'); process.exit(1)
   }
-  let tracked = []
-  try { tracked = execSync('git ls-files', { encoding: 'utf8' }).split('\n').filter(Boolean) }
-  catch { console.error('tasklog-check: git ls-files failed — the forbidden check needs a git repo'); process.exit(1) }
   cfg.forbidden.forEach((rule, i) => {
     if (!rule?.path || !rule?.pattern) {
       console.error(`tasklog-check: forbidden[${i}] needs at least {path, pattern}`); process.exit(1)
     }
-    let pathRe, patRe
-    try { pathRe = new RegExp(rule.path); patRe = new RegExp(rule.pattern) }
+    let pathRe
+    try { pathRe = new RegExp(rule.path); new RegExp(rule.pattern) }
     catch (e) { console.error(`tasklog-check: forbidden[${i}] has a bad regex — ${e.message}`); process.exit(1) }
-    for (const f of tracked.filter(f => pathRe.test(f))) {
-      readFileSync(f, 'utf8').split('\n').forEach((line, ln) => {
-        if (patRe.test(line)) {
-          hasForbiddenHit = true
-          errors.push(`F ${f}:${ln + 1} matches forbidden pattern /${rule.pattern}/${rule.reason ? ' — ' + rule.reason : ''}`)
-        }
-      })
+    let out = ''
+    try {
+      out = execSync('git -c core.quotepath=false grep -I -n -P -f - HEAD', { encoding: 'utf8', input: rule.pattern })
+    } catch (e) {
+      const stderr = (e.stderr ?? '').toString()
+      if (e.status === 1 && !stderr.trim()) out = '' // exit 1 with quiet stderr = no matches
+      else if (/bad revision|unknown revision/i.test(stderr)) out = '' // repo has no commits yet — nothing pushable to scan
+      else { console.error(`tasklog-check: git grep failed on forbidden[${i}] /${rule.pattern}/ — ${(stderr || e.message).trim()}`); process.exit(1) }
+    }
+    for (const line of out.split('\n').filter(Boolean)) {
+      const m = line.match(/^HEAD:(.+?):(\d+):/)
+      if (!m || !pathRe.test(m[1])) continue
+      hasForbiddenHit = true
+      errors.push(`F ${m[1]}:${m[2]} (committed) matches forbidden pattern /${rule.pattern}/${rule.reason ? ' — ' + rule.reason : ''}`)
     }
   })
 }

@@ -4,10 +4,13 @@
 import { execSync } from 'node:child_process'
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const [repo, promptFile] = process.argv.slice(2)
-const KEY = (process.env.DEEPSEEK_API_KEY ?? readFileSync(resolve(dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), 'ds.key'), 'utf8')).trim()
-if (!KEY || !repo || !promptFile) { console.error('usage: node ds-agent.mjs <repo> <promptFile> (key in ds.key or DEEPSEEK_API_KEY)'); process.exit(1) }
+let KEY = process.env.DEEPSEEK_API_KEY
+if (!KEY) { try { KEY = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'ds.key'), 'utf8') } catch { /* handled below */ } }
+KEY = KEY?.trim()
+if (!KEY || !repo || !promptFile) { console.error('usage: node ds-agent.mjs <repo> <promptFile> (key in ds.key next to this script, or DEEPSEEK_API_KEY)'); process.exit(1) }
 const prompt = readFileSync(promptFile, 'utf8').replaceAll('{REPO}', repo)
 
 const tools = [

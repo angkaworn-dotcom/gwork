@@ -13,7 +13,9 @@ const src = process.argv[2] ?? 'update task.md'
 const raw = readFileSync(src, 'utf8')
 
 // --- 1. split entries by "## " headers ---
-const lines = raw.split('\n')
+// \r?\n: a CRLF source file leaves \r on every line otherwise — in JS regex `.` does not
+// match \r (it's a LineTerminator), so the header regex's `(.*)$` fails on every entry
+const lines = raw.split(/\r?\n/)
 const entries = []
 let cur = null
 for (const line of lines) {

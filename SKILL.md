@@ -7,7 +7,7 @@ description: Install the gwork discipline kit (git pre-push/commit-msg hooks, ta
 
 One principle: **any rule that can be checked deterministically becomes a hook/script that actually blocks.** CLAUDE.md keeps only judgment calls.
 
-All source files live in this skill folder (`scripts/`, `githooks/`, `hooks/`, `commands/`, `CLAUDE.template.md`). Communicate with the user in their language. `e2e/` is the kit's own test harness — never copy it into a target repo; rerun it after changing any hook or script (see [e2e/README.md](e2e/README.md)).
+All source files live in this skill folder (`scripts/`, `githooks/`, `hooks/`, `commands/`, `CLAUDE.template.md`). Communicate with the user in their language. `e2e/` is the kit's own test harness — never copy it into a target repo; rerun it after changing any hook or script (see [e2e/README.md](e2e/README.md)). Field failures and their fixes live in [LESSONS.md](LESSONS.md) — **read its newest entries before an install**, and when the kit itself misbehaves follow the Self-repair protocol below.
 
 ## What is enforced by what
 
@@ -34,6 +34,7 @@ Let `<SKILL>` = this skill folder, `<REPO>` = the target repo.
    cp <SKILL>/scripts/tasklog-check.mjs <SKILL>/scripts/migrate.mjs <REPO>/scripts/
    cd <REPO> && git config core.hooksPath githooks
    ```
+   Check the repo's `.gitignore` covers none of the copied paths (`git check-ignore scripts/tasklog-check.mjs githooks/pre-push task-log/INDEX.md`) — a repo that ignores `/scripts/` silently unstages the checker (L-002: dir-level ignore also defeats `!negation`; change to `/scripts/*` + `!/scripts/tasklog-check.mjs`).
 3. **task-log:**
    - Existing log (entries headed `## YYYY-MM-DD — title`): `node scripts/migrate.mjs "<log file>"` → produces `task-log/` (source file untouched)
    - None: create `task-log/INDEX.md` (empty table header `| Module | Entries (latest first) | BC | Gotcha (≤1 line) |`) + an empty `task-log/<YYYY-MM>.md`
@@ -61,6 +62,18 @@ git commit --allow-empty -m "bad"         # must be blocked by commit-msg (then 
 ```
 Test the hook: edit a file in a module that has a gotcha in INDEX → injection appears the first time, silent the second time.
 If the sentinel is installed, `node e2e/tools/unit.mjs` from the kit exercises it end-to-end (15 deterministic cases).
+
+## Self-repair — the kit fixes itself when it breaks in the field
+
+Iron rule: **a kit bug found during install or daily use is fixed at the source, in the same session — never patched only in the target repo.** Every field failure makes the kit permanently better; the lesson log is [LESSONS.md](LESSONS.md).
+
+1. **Root-cause first** (evidence, not guess) — reproduce the failure minimally before touching anything
+2. **Fix the source file in this skill folder**, then sync the fix to the installed copy in the repo you're working in (installed copies are deployments, not forks — never let them drift; add a code comment explaining the why)
+3. **Append the lesson to `LESSONS.md`** (newest first): id `L-xxx` · date · repo found in · symptom · root cause · fix. If the failure was an install step (not a code bug), also update the install instructions above in the same session, citing the `L-xxx`
+4. **Rerun the harness** when the changed file is covered: `node e2e/tools/unit.mjs` after touching the sentinel, hooks, or tasklog-check; full e2e per [e2e/README.md](e2e/README.md) for behavior changes. Changed file not covered → say so explicitly in the lesson
+5. **Sentinel repos:** if a repaired file is under a sentinel snapshot, pushes there will block until the owner re-runs `node scripts/gwork-sentinel.mjs update` — tell them, don't work around it
+
+Self-repair boundary: it may fix bugs, silence false noise, and add checks — it must **never weaken enforcement** (removing/softening a gate, widening an escape hatch) without the owner's explicit ok in chat; that path stays governed by the gwork.json `forbidden` rules and check G.
 
 ## Boundaries
 

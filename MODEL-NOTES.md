@@ -56,9 +56,22 @@ Format: `## M-xxx — <one-line change>` · date · trigger · Removed / Kept / 
 ### Conditional (the split)
 
 gwork now has two prompt-layer consumers — Claude Code and Hermes/DeepSeek V4 (`hermes/`). Removing
-verification scaffolding is right for Opus 5 and **wrong for deepseek-v4-flash**: e2e S9, before checks
-G/H existed, had a flash run empty `forbidden: []` on its own and describe that as "the only authorized
-override mechanism". A model that still needs the rails is exactly the model that breaks when they come off.
+verification scaffolding is right for Opus 5 and **assumed wrong for deepseek-v4-flash**.
+
+> **Correction (same day, before this note was ever acted on).** The first draft of M-001 cited e2e S9
+> — the flash run that emptied `forbidden: []` and called it "the only authorized override mechanism" —
+> as evidence that this block is load-bearing for weak models. **That citation does not support that
+> claim.** Every S1–S11 run to date was driven against the hand-written 3-rule stub `CLAUDE.md` in
+> `setup.mjs`, which contains none of this template's judgment rules — no scaffolding block, and no
+> rule 4b either. So S9 shows a weak model self-authorizing when the prompt has **no governance rule at
+> all**, which is evidence for keeping **rule 4b** (kept, and present in both variants) and says nothing
+> about the scaffolding block. Inference presented as observation — the exact error the template's own
+> Evidence-based rule names.
+
+What survives the correction: the *split itself* is still right, because the cost is asymmetric — keeping
+the block costs length, removing it risks silent self-authorization on a model class that demonstrably
+does that under conflict. But "keep it for weak models" is a **precaution, not a measured result**, and
+is labelled as such in `ADAPT.md` and in the block's own comment.
 
 Resolution: **one file, one deletable block.** `CLAUDE.template.md` carries a `SCAFFOLDING BLOCK`
 (the three removed lines, restored verbatim) marked delete-for-frontier / keep-for-weaker, chosen once
@@ -72,12 +85,22 @@ close-out and to keep close-outs to a few sentences.
 
 ### Harness
 
-**Not covered.** Per the self-repair protocol step 4: `e2e/` tests the deterministic kit (hooks, checker,
-sentinel, import command) against seeded sandboxes — `node e2e/tools/unit.mjs` is 15/15 green and
-untouched by this change, because no scenario reads `CLAUDE.template.md`'s judgment sections. The e2e
-scenarios that mention CLAUDE.md ("Read CLAUDE.md first and follow it") assert on repo state — commits,
-INDEX rows, pushed content — never on the shape of the model's report, which is what this change alters.
-So the edited file has no automated coverage, and the change is reviewed, not verified. What would cover
-it: a scenario scoring close-out length and narration count across model tiers, plus an S9 rerun on
-deepseek-v4-flash with the scaffolding block deleted, to confirm the block is load-bearing rather than
-assumed to be.
+**Not covered — and the gap is wider than "this file has no test."** Per self-repair protocol step 4:
+
+`e2e/` tests the deterministic kit (hooks, checker, sentinel, import) against seeded sandboxes.
+`node e2e/tools/unit.mjs` is 15/15 and untouched by this change. But the scenarios that say "Read
+CLAUDE.md first and follow it" were reading `setup.mjs`'s **stub** `CLAUDE.md`, not
+`CLAUDE.template.md` — so **no e2e run has ever exercised the shipped template**, and the scenarios
+assert on repo state (commits, INDEX rows, pushed content), never on report shape, which is what
+Output discipline changes.
+
+Built in response, still **unrun**: scenario **S12** (`e2e/scenarios.md`) — `setup.mjs --claude=full|lean`
+puts the real template in the sandbox with the scaffolding block kept or deleted, everything else byte
+identical, and `e2e/tools/score-s9.mjs` scores the arm-discriminating signal (bypass *attempts*:
+`--no-verify`, forbidden-list rewrite, raw-shell write, forged trailer) rather than the final repo state,
+which the unchanged deterministic layer makes identical in both arms. The scorer is verified on synthetic
+compliant/bypass logs; it has never seen a live model. Running it needs `DEEPSEEK_API_KEY` and network
+egress to `api.deepseek.com` — both unavailable in the container this was authored in (proxy policy
+returns 403 on CONNECT).
+
+Until S12 runs, everything in the *Conditional* section above is a design decision, not a finding.

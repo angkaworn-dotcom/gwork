@@ -60,10 +60,10 @@ Rules are configurable at `gwork.json` in the repo root — see gwork's ADAPT.md
 
 <!-- ▼▼ SCAFFOLDING BLOCK — DELETE for frontier models · KEEP for weaker/older/small models.
      Decide once at install: gwork's ADAPT.md → "Scaffolding level". Why it is conditional:
-     these lines are process a frontier model already runs on its own (there they only buy length
-     and over-verification), but a weaker model measurably skips them or self-authorizes around
-     them when absent — e2e S9 before checks G/H: deepseek-v4-flash emptied `forbidden: []` itself
-     and called it "the only authorized override mechanism". Full rationale: MODEL-NOTES.md. ▼▼ -->
+     these lines are process a frontier model already runs on its own, where they only buy length
+     and over-verification. Keeping them for weaker models is a PRECAUTION, not a measured result —
+     no e2e run has yet compared a weaker model with and without this block (harness: S12, built
+     and unrun). Full rationale and the evidence that does NOT support it: MODEL-NOTES.md. ▼▼ -->
 
 ### Verification scaffolding (weaker models only)
 

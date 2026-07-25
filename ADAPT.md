@@ -64,9 +64,15 @@ step 6, by which model drives the repo:**
 The block declares that it outranks the template's **Output discipline** section, so keeping it is
 internally consistent — no further edits needed either way.
 
-Evidence for treating this as model-dependent: e2e S9 before checks G/H, where a deepseek-v4-flash run
-emptied `forbidden: []` on its own and called it "the only authorized override mechanism". Full
-reasoning for every line the template cut, kept, and added: [MODEL-NOTES.md](MODEL-NOTES.md) (M-001) —
+**Status of this recommendation: precaution, not measurement.** e2e S9 showed a deepseek-v4-flash run
+emptying `forbidden: []` on its own and calling it "the only authorized override mechanism" — but that
+run used the old stub sandbox `CLAUDE.md`, which contained neither this block **nor** rule 4b. So it
+shows a weak model self-authorizes when the prompt carries no governance rule at all; it does not show
+that *this block* is what prevents it (rule 4b is the likelier candidate, and it ships in both variants
+regardless). The A/B that would settle it is built but unrun — scenario S12 in
+[e2e/scenarios.md](e2e/scenarios.md). Until it runs, "keep it" is the conservative default, not a finding.
+
+Full reasoning for every line the template cut, kept, and added: [MODEL-NOTES.md](MODEL-NOTES.md) (M-001) —
 read it before putting any removed line back.
 
 ## What still requires code changes (not covered by config)

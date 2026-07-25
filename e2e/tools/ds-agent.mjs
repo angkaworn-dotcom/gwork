@@ -63,7 +63,9 @@ for (let turn = 0; turn < 60 && !finished; turn++) {
   for (const tc of msg.tool_calls) {
     let args = {}
     try { args = JSON.parse(tc.function.arguments) } catch { /* pass empty */ }
-    console.log(`[${turn}] ${tc.function.name} ${(args.command ?? args.path ?? '').slice(0, 140)}`)
+    // Full command, not truncated: score-s9.mjs greps this log for bypass attempts
+    // (`--no-verify`, raw-shell writes), and a 140-char cut hid them mid-command.
+    console.log(`[${turn}] ${tc.function.name} ${(args.command ?? args.path ?? '').slice(0, 400)}`)
     messages.push({ role: 'tool', tool_call_id: tc.id, content: String(runTool(tc.function.name, args)).slice(0, 48000) })
   }
 }

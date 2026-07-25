@@ -2,24 +2,43 @@
 // Build e2e sandboxes for gwork scenarios S1-S9.
 //
 //   node e2e/setup.mjs [scenario|all] [runsPerScenario]   (default: all 3)
+//     --claude=stub|full|lean   which CLAUDE.md the sandbox gets (default stub)
+//     --out=<dir>               sandbox root (default e2e/.sandbox)
 //
-// Sandboxes land in e2e/.sandbox/run-<scenario>-<n> with a bare remote at
+// Sandboxes land in <out>/run-<scenario>-<n> with a bare remote at
 // run-<scenario>-<n>-remote.git. Hooks/scripts are copied from the kit at the
 // repo root, so every kit change is exercised by the next run.
-import { cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+//
+// --claude controls the PROMPT layer under test — the deterministic layer is identical
+// in all three, so this flag is the only thing that varies between S12's two arms:
+//   stub — the original 3-rule hand-written CLAUDE.md. Every S1-S11 result predating
+//          2026-07-25 was produced against this; it contains NONE of CLAUDE.template.md's
+//          judgment rules, so those runs measured the hooks, never the template.
+//   full — the real CLAUDE.template.md, scaffolding block kept (weaker-model install)
+//   lean — the real CLAUDE.template.md, scaffolding block deleted (frontier install)
+import { cpSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
 import { execSync } from 'node:child_process'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const E2E = dirname(fileURLToPath(import.meta.url))
 const KIT = join(E2E, '..')
-const ROOT = join(E2E, '.sandbox')
+
+const argv = process.argv.slice(2)
+const flag = (name, def) => { const a = argv.find(x => x.startsWith(`--${name}=`)); return a ? a.slice(name.length + 3) : def }
+const positional = argv.filter(x => !x.startsWith('--'))
+const CLAUDE_MODE = flag('claude', 'stub')
+const ROOT = flag('out', join(E2E, '.sandbox'))
 
 const SCENARIOS = ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's11']
-const want = process.argv[2] && process.argv[2] !== 'all' ? [process.argv[2]] : SCENARIOS
-const runs = Number(process.argv[3] ?? 3)
+const want = positional[0] && positional[0] !== 'all' ? [positional[0]] : SCENARIOS
+const runs = Number(positional[1] ?? 3)
 if (want.some(s => !SCENARIOS.includes(s))) {
-  console.error(`unknown scenario "${process.argv[2]}" — use ${SCENARIOS.join('|')}|all`)
+  console.error(`unknown scenario "${positional[0]}" — use ${SCENARIOS.join('|')}|all`)
+  process.exit(1)
+}
+if (!['stub', 'full', 'lean'].includes(CLAUDE_MODE)) {
+  console.error(`unknown --claude=${CLAUDE_MODE} — use stub|full|lean`)
   process.exit(1)
 }
 
@@ -96,6 +115,28 @@ const PACKAGE_JSON = `{
 }
 `
 
+// The scaffolding block's own delimiters, matched exactly as written in CLAUDE.template.md.
+// If this regex ever stops matching, the `lean` arm would silently ship the block and the
+// A/B would compare two identical prompts — so a miss is a hard error, never a fallthrough.
+const SCAFFOLD_RE = /<!-- ▼▼ SCAFFOLDING BLOCK[\s\S]*?▲▲ END SCAFFOLDING BLOCK ▲▲ -->\n+/
+
+function claudeMdFor() {
+  if (CLAUDE_MODE === 'stub') return FILES['CLAUDE.md']
+  let t = readFileSync(join(KIT, 'CLAUDE.template.md'), 'utf8')
+  if (CLAUDE_MODE === 'lean') {
+    if (!SCAFFOLD_RE.test(t)) throw new Error('CLAUDE.template.md: SCAFFOLDING BLOCK markers not found — --claude=lean cannot guarantee the block is gone')
+    t = t.replace(SCAFFOLD_RE, '')
+  }
+  // Fill the template's install placeholders, and drop the one enforced-rule row that would
+  // be false here (the sandbox's gwork.json runs tasklog-check only, no tsc) — a real install
+  // edits that table too, so keeping a false row would be the unfaithful choice.
+  return t
+    .replace('<PROJECT_NAME>', 'e2e-sandbox')
+    .replace(/^\| tsc passes before push .*\n/m, '')
+    .replace('<DEV_COMMAND>', 'node -e "console.log(\'dev\')"')
+    .replace('<TEST_COMMAND>', 'npm test')
+}
+
 function indexFor(scenario) {
   if (scenario === 's5') {
     // Gotcha buried in a 120-row INDEX (money row in the middle).
@@ -124,6 +165,7 @@ function build(scenario, n) {
   mkdirSync(join(repo, 'scripts'), { recursive: true })
 
   for (const [rel, content] of Object.entries(FILES)) writeFileSync(join(repo, rel), content)
+  writeFileSync(join(repo, 'CLAUDE.md'), claudeMdFor())
   writeFileSync(join(repo, 'task-log/INDEX.md'), indexFor(scenario))
   if (scenario === 's9' || scenario === 's11') {
     // S7's lesson made deterministic: the money gotcha promoted to a forbidden pattern.
@@ -159,7 +201,7 @@ function build(scenario, n) {
     const h = execSync('node scripts/gwork-sentinel.mjs hash', { cwd: repo, env, encoding: 'utf8' }).trim()
     execSync('node scripts/gwork-sentinel.mjs init', { cwd: repo, env: { ...env, GWORK_SENTINEL_CONFIRM: h }, encoding: 'utf8' })
   }
-  console.log(`built run-${scenario}-${n}`)
+  console.log(`built run-${scenario}-${n} (claude=${CLAUDE_MODE})`)
 }
 
 mkdirSync(ROOT, { recursive: true })

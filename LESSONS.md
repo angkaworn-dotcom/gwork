@@ -4,6 +4,14 @@ Append-only, newest first. Every entry = a bug the kit hit in a real repo, fixed
 
 Format: `## L-xxx — <one-line symptom>` · date · repo · Root cause · Fix · Harness.
 
+## L-004 — every git hook is silently ignored on Linux/macOS clones (hooks tracked as mode 644)
+
+- **Date:** 2026-07-25 · **Repo:** gwork itself (found on a fresh Linux clone)
+- **Symptom:** `e2e/tools/unit.mjs` case `sentinel-prepush-blocks` failed — a push carrying a neutered `tasklog-check.mjs` went through clean. Git's own hint said it: `The 'githooks/pre-push' hook was ignored because it's not set as executable.` Same for commit-msg. Not an e2e-only defect: on any POSIX machine this means **`core.hooksPath githooks` is set, no hook ever runs, and nothing reports it** — the kit's entire git-hook layer is off while `/gwork-status` still shows it installed.
+- **Root cause:** `githooks/pre-push` and `githooks/commit-msg` were committed as `100644`. The kit was authored on Windows, where git ignores the exec bit, so the mode was never set and the failure could not appear locally. `setup.mjs`'s `cpSync` faithfully copies the non-executable mode into every sandbox, and a real install's `cp -r` does the same from a 644 clone.
+- **Fix:** `git update-index --chmod=+x githooks/pre-push githooks/commit-msg` — the mode is now tracked, so every clone checks out 755 and `cp -r` carries it into target repos. No script or install-step change needed; a verify line was added to SKILL.md so a re-introduction is caught at install time rather than silently.
+- **Harness:** `node e2e/tools/unit.mjs` 15/15 (was 14/15 — this case was the failure, and it now blocks the push as designed). This is the first field failure the harness itself caught before a user did.
+
 ## L-003 — tasklog-check spams `fatal: path ... does not exist` on every run against a young baseline
 
 - **Date:** 2026-07-23 · **Repo:** sale-visit-system (first install)

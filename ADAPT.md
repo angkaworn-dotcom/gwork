@@ -48,6 +48,27 @@ Not a TypeScript repo? Swap in your stack's build/lint commands.
 ### `pathPattern` — regex that finds file paths inside log entry bodies (used by migrate)
 Adjust the prefix list and file extensions to your stack (e.g. add `svelte` for Svelte, `php` for PHP)
 
+## Scaffolding level — one choice inside CLAUDE.md (not `gwork.json`)
+
+`CLAUDE.template.md` ships one block fenced by `▼▼ SCAFFOLDING BLOCK` / `▲▲ END SCAFFOLDING BLOCK`,
+holding three verification instructions: the `investigate → root cause → design → implement` sequence,
+the 4-angle self-review before push, and the 5-field final delivery format. **Decide once, at install
+step 6, by which model drives the repo:**
+
+| Model driving the repo | Do this |
+|---|---|
+| Frontier (Opus 5 class) | **delete the block** — the model already does this; keeping it buys over-verification and long reports |
+| Weaker / older / small local models — incl. deepseek-v4-flash | **keep it** |
+| Mixed, or you don't know yet | **keep it** — the cost of keeping is length; the failure mode of removing is silent self-authorization |
+
+The block declares that it outranks the template's **Output discipline** section, so keeping it is
+internally consistent — no further edits needed either way.
+
+Evidence for treating this as model-dependent: e2e S9 before checks G/H, where a deepseek-v4-flash run
+emptied `forbidden: []` on its own and called it "the only authorized override mechanism". Full
+reasoning for every line the template cut, kept, and added: [MODEL-NOTES.md](MODEL-NOTES.md) (M-001) —
+read it before putting any removed line back.
+
 ## What still requires code changes (not covered by config)
 
 - **Legacy log header format** read by `migrate.mjs`: must be `## YYYY-MM-DD` (optionally followed by `(n)` / `— title`) — for other formats, edit the regex in migrate.mjs or convert headers first

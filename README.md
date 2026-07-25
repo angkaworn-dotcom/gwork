@@ -24,6 +24,10 @@ git clone https://github.com/angkaworn-dotcom/gwork.git ~/.claude/skills/gwork
 
 Then tell Claude Code to **"install gwork"** in your target repo — full steps in [SKILL.md](SKILL.md), per-project rule tuning in [ADAPT.md](ADAPT.md).
 
+The template's judgment rules are tuned per model generation: frontier models get the short form, weaker
+ones keep a verification scaffolding block (one delete-or-keep choice at install — [ADAPT.md](ADAPT.md) →
+"Scaffolding level"). What was cut, kept, and why: [MODEL-NOTES.md](MODEL-NOTES.md).
+
 ### Slash commands (copy `commands/*.md` → `~/.claude/commands/`)
 
 | Command | What it does |

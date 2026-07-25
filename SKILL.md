@@ -7,7 +7,7 @@ description: Install the gwork discipline kit (git pre-push/commit-msg hooks, ta
 
 One principle: **any rule that can be checked deterministically becomes a hook/script that actually blocks.** CLAUDE.md keeps only judgment calls.
 
-All source files live in this skill folder (`scripts/`, `githooks/`, `hooks/`, `commands/`, `CLAUDE.template.md`). Communicate with the user in their language. `e2e/` is the kit's own test harness — never copy it into a target repo; rerun it after changing any hook or script (see [e2e/README.md](e2e/README.md)). Field failures and their fixes live in [LESSONS.md](LESSONS.md) — **read its newest entries before an install**, and when the kit itself misbehaves follow the Self-repair protocol below.
+All source files live in this skill folder (`scripts/`, `githooks/`, `hooks/`, `commands/`, `CLAUDE.template.md`). Communicate with the user in their language. `e2e/` is the kit's own test harness — never copy it into a target repo; rerun it after changing any hook or script (see [e2e/README.md](e2e/README.md)). Field failures and their fixes live in [LESSONS.md](LESSONS.md) — **read its newest entries before an install**, and when the kit itself misbehaves follow the Self-repair protocol below. Prompt-layer changes made because a *model generation* changed (not because anything broke) live in [MODEL-NOTES.md](MODEL-NOTES.md) — read it before adding a rule back into `CLAUDE.template.md` that was deliberately removed.
 
 ## What is enforced by what
 
@@ -46,6 +46,7 @@ Let `<SKILL>` = this skill folder, `<REPO>` = the target repo.
    ```
    The hook finds `task-log/INDEX.md` by walking up from cwd — one global copy serves every repo with the kit installed.
 6. **CLAUDE.md:** use `CLAUDE.template.md` as the skeleton — fill `<PROJECT_NAME>`, commands, SSOT, then **move long gotchas from the old CLAUDE.md into Known Bug Classes (one line per BC-xxx)**. Keep existing architecture/project specifics; cut only rules the hooks now enforce.
+   Then **make the one scaffolding choice**: the `SCAFFOLDING BLOCK` in the template is deleted for frontier models (Opus 5 class) and kept for weaker/older ones (incl. deepseek-v4-flash) — ask the owner which drives the repo if it isn't obvious, and see [ADAPT.md](ADAPT.md) → "Scaffolding level". Keeping it is the safe default.
 7. **Sentinel (optional, recommended when an agent runs the repo autonomously):** tamper-detector for the enforcement machinery itself — snapshots the hooks/checker/`core.hooksPath`/guards outside the repo and blocks a push (and denies edits) if any of them drifts from the owner's snapshot. As the **owner**, on a terminal:
    ```bash
    cp <SKILL>/scripts/gwork-sentinel.mjs <REPO>/scripts/
@@ -57,9 +58,11 @@ Let `<SKILL>` = this skill folder, `<REPO>` = the target repo.
 ## Verify after install
 
 ```bash
+git ls-files -s githooks/                 # both must be mode 100755 — see below
 node scripts/tasklog-check.mjs            # must be green
 git commit --allow-empty -m "bad"         # must be blocked by commit-msg (then reset)
 ```
+If a hook shows `100644`, git **silently ignores it on Linux/macOS** and the whole hook layer is off while everything still looks installed (L-004): `git update-index --chmod=+x githooks/pre-push githooks/commit-msg`. The empty-commit test above catches this too — a commit that is *not* blocked is the symptom.
 Test the hook: edit a file in a module that has a gotcha in INDEX → injection appears the first time, silent the second time.
 If the sentinel is installed, `node e2e/tools/unit.mjs` from the kit exercises it end-to-end (15 deterministic cases).
 

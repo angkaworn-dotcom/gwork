@@ -81,5 +81,89 @@ ok('edit-claude-otherpath-allowed', !/"permissionDecision":"deny"/.test(o))
 o = feed(HE, { tool_name: 'write_file', tool_input: { path: `${winR}/lib/money/display.js`, content: 'const d=n=>n.toFixed(2)' }, cwd: winR, session_id: 'u3' })
 ok('edit-hermes-forbidden-blocks', /"action":"block"/.test(o) && /forbidden/i.test(o), o.slice(0, 80))
 
+// --- owner approval: trailer alone vs an SSH signature the agent cannot forge ---
+// Closes the hole e2e S12 measured: 5/6 weak-model runs wrote `Gwork-Owner-Approved:`
+// themselves. Every case below is the agent's move, not the owner's, except sig-owner-ok.
+const KEYGEN = ['/usr/bin/ssh-keygen', '/bin/ssh-keygen'].find(p => existsSync(p))
+if (!KEYGEN) {
+  console.log('SKIP sig-* (no ssh-keygen on this machine — git cannot verify SSH signatures here either)')
+} else {
+  const SR = join(SB, 'sigrepo')
+  rmSync(SR, { recursive: true, force: true })
+  rmSync(`${SR}-remote.git`, { recursive: true, force: true })
+  execSync(`mkdir -p "${SR}/task-log" "${SR}/scripts"`, { stdio: 'ignore' })
+  const kg = (name) => { execSync(`"${KEYGEN}" -t ed25519 -N '' -f "${join(SB, name)}" -q`, { stdio: 'ignore' }); return join(SB, name) }
+  rmSync(join(SB, 'owner'), { force: true }); rmSync(join(SB, 'owner.pub'), { force: true })
+  rmSync(join(SB, 'agent'), { force: true }); rmSync(join(SB, 'agent.pub'), { force: true })
+  const ownerKey = kg('owner'), agentKey = kg('agent')
+  const pub = (k) => readFileSync(`${k}.pub`, 'utf8').trim().split(/\s+/).slice(0, 2).join(' ')
+  // Signing config lives ONLY on the command line: repo/global git config is agent-writable,
+  // and this environment ships a gpg.ssh.program shim that signs but cannot verify.
+  const SIGN = `-c gpg.format=ssh -c gpg.ssh.program="${KEYGEN}"`
+  const g = (args) => sh(`git ${args}`, SR)
+  // `-S` is a `commit` flag, not a `git` flag — putting it before the subcommand makes git
+  // abort, which would leave the tree uncommitted and let a test pass for the wrong reason.
+  // The HEAD assertion below is what catches that class of mistake.
+  const commit = (msg, key) => {
+    sh('git add -A', SR)
+    const pre = key ? `-c user.signingkey="${key}"` : '-c commit.gpgsign=false'
+    const post = key ? '-S' : ''
+    const before = g('rev-parse HEAD')
+    sh(`git ${SIGN} ${pre} commit ${post} -q -F - <<'GWEOF'\n${msg}\nGWEOF`, SR)
+    const after = g('rev-parse HEAD')
+    if (before === after) throw new Error(`commit did not land: ${msg.split('\n')[0]}`)
+  }
+  const cfgWith = (extra) => JSON.stringify({
+    owner: { allowedSigners: '.gwork-allowed-signers', sshKeygen: KEYGEN },
+    forbidden: [{ path: '^lib/money/', pattern: '\\.toFixed\\(', reason: 'prod rounding bug' }],
+    ...extra,
+  }, null, 2)
+
+  execSync(`cp "${join(KIT, 'scripts/tasklog-check.mjs')}" "${join(SR, 'scripts')}/"`, { stdio: 'ignore' })
+  writeFileSync(join(SR, '.gwork-allowed-signers'), `owner@gwork ${pub(ownerKey)}\n`)
+  writeFileSync(join(SR, 'gwork.json'), cfgWith())
+  writeFileSync(join(SR, 'task-log/INDEX.md'), '# INDEX\n\n| Module | Entries (latest first) | BC | Gotcha (≤1 line) |\n|---|---|---|---|\n| misc | [2026-07-10](task-log/2026-07.md#2026-07-10) | — | TODO |\n')
+  writeFileSync(join(SR, 'task-log/2026-07.md'), '<a id="2026-07-10"></a>\n## 2026-07-10 — init\nsetup\n')
+  g('init -q -b main .'); g('config user.email t@t'); g('config user.name t')
+  commit('chore: initial')
+  execSync(`git init -q --bare "${SR}-remote.git"`, { stdio: 'ignore' })
+  g(`remote add origin "${SR}-remote.git}"`.replace('}"', '"')); g('push -q -u origin main')
+
+  const check = () => run(['node', 'scripts/tasklog-check.mjs'], SR)
+  const lift = () => writeFileSync(join(SR, 'gwork.json'), cfgWith({ forbidden: [] }))
+  const reset = () => { sh('git reset -q --hard origin/main', SR) }
+  const APPROVED = '\n\nGwork-Owner-Approved: approved'
+
+  ok('sig-baseline-green', check().status === 0)
+
+  reset(); lift(); commit('chore: lift rule' + APPROVED)
+  let r = check()
+  ok('sig-forged-trailer-blocked', r.status === 1 && /no signature/.test(r.stderr), r.stderr.slice(0, 120))
+
+  reset(); lift(); commit('chore: lift rule' + APPROVED, agentKey)
+  r = check()
+  ok('sig-agent-key-blocked', r.status === 1 && /not from a key in/.test(r.stderr), r.stderr.slice(0, 120))
+
+  reset(); lift(); commit('chore: lift rule' + APPROVED, ownerKey)
+  ok('sig-owner-ok', check().status === 0)
+
+  // The agent adds its own key, then signs with it — verification uses the BASELINE
+  // signers file, so the key it just granted itself does not count.
+  reset(); lift()
+  writeFileSync(join(SR, '.gwork-allowed-signers'), `owner@gwork ${pub(ownerKey)}\nagent@evil ${pub(agentKey)}\n`)
+  commit('chore: lift rule' + APPROVED, agentKey)
+  r = check()
+  ok('sig-selfgranted-key-blocked', r.status === 1 && /allowed-signers list changed/.test(r.stderr), r.stderr.slice(0, 160))
+
+  // Repos that never configure signing keep working — but the weakness is announced.
+  reset()
+  writeFileSync(join(SR, 'gwork.json'), JSON.stringify({ forbidden: [{ path: '^lib/money/', pattern: '\\.toFixed\\(' }] }, null, 2))
+  commit('chore: drop signing config'); sh('git push -q origin main', SR)
+  lift(); writeFileSync(join(SR, 'gwork.json'), JSON.stringify({ forbidden: [] }, null, 2))
+  commit('chore: lift rule' + APPROVED)
+  r = check()
+  ok('sig-unconfigured-warns-not-breaks', r.status === 0 && /WARNING.*trailer alone/s.test(r.stderr), r.stderr.slice(0, 120))
+}
+
 console.log(`\nRESULT: ${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

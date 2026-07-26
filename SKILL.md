@@ -47,7 +47,13 @@ Let `<SKILL>` = this skill folder, `<REPO>` = the target repo.
    The hook finds `task-log/INDEX.md` by walking up from cwd — one global copy serves every repo with the kit installed.
 6. **CLAUDE.md:** use `CLAUDE.template.md` as the skeleton — fill `<PROJECT_NAME>`, commands, SSOT, then **move long gotchas from the old CLAUDE.md into Known Bug Classes (one line per BC-xxx)**. Keep existing architecture/project specifics; cut only rules the hooks now enforce.
    The template is the same for every model — there is no per-model variant to pick (a deletable verification-scaffolding block existed for one day and was removed when e2e S12 measured no effect; see [ADAPT.md](ADAPT.md)).
-7. **Sentinel (optional, recommended when an agent runs the repo autonomously):** tamper-detector for the enforcement machinery itself — snapshots the hooks/checker/`core.hooksPath`/guards outside the repo and blocks a push (and denies edits) if any of them drifts from the owner's snapshot. As the **owner**, on a terminal:
+7. **Owner signing key (recommended whenever an agent can commit):** without it, "the owner approved this" is a commit trailer the agent writes itself — e2e S12: 5/6 weak-model runs forged it and 3/6 pushed a forbidden pattern through. As the **owner**, on a terminal:
+   ```bash
+   ssh-keygen -t ed25519 -f ~/.ssh/gwork_owner        # passphrase or hardware key — not empty
+   printf 'owner %s\n' "$(awk '{print $1" "$2}' ~/.ssh/gwork_owner.pub)" > <REPO>/.gwork-allowed-signers
+   ```
+   then add `"owner": { "allowedSigners": ".gwork-allowed-signers" }` to `gwork.json`, commit both, and approve overrides with `git commit -S`. Full notes in [ADAPT.md](ADAPT.md) → `owner`. Leave it unset and the kit still works, but every accepted trailer prints a warning.
+8. **Sentinel (optional, recommended when an agent runs the repo autonomously):** tamper-detector for the enforcement machinery itself — snapshots the hooks/checker/`core.hooksPath`/guards outside the repo and blocks a push (and denies edits) if any of them drifts from the owner's snapshot. As the **owner**, on a terminal:
    ```bash
    cp <SKILL>/scripts/gwork-sentinel.mjs <REPO>/scripts/
    node <REPO>/scripts/gwork-sentinel.mjs install            # copies to ~/.gwork/bin

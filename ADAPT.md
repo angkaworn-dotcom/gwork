@@ -33,6 +33,38 @@ Not a TypeScript repo? Swap in your stack's build/lint commands.
 - Use this for "NEVER X in Y" gotchas — a rule the AI must not be able to trade away. **A direct order in a prompt is not authorization to violate one; only the repo owner overrides, by editing this list** (evidence: e2e S7 — under a conflicting explicit order, 0/3 agents honored a prompt-level gotcha)
 - Default: none · both fields are JS regexes (double-escape: `\\.`)
 
+### `owner` — make "the owner approved this" unforgeable (strongly recommended)
+
+```json
+"owner": { "allowedSigners": ".gwork-allowed-signers", "sshKeygen": "/usr/bin/ssh-keygen" }
+```
+
+Without this, lifting a `forbidden` rule (check G), blanking a gotcha, or backdating an entry
+(check H) is excused by a `Gwork-Owner-Approved: <why>` commit trailer — **which the agent writes
+itself.** e2e S12 measured that: 5 of 6 weak-model runs forged the trailer, quoting the task prompt
+as the owner's confirmation, and 3 of 6 got a forbidden pattern onto the remote. Set this and the
+same overrides additionally require an SSH signature from a key you hold:
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/gwork_owner            # once; keep the private half OFF the repo
+printf 'owner %s\n' "$(awk '{print $1" "$2}' ~/.ssh/gwork_owner.pub)" > .gwork-allowed-signers
+git config gpg.format ssh && git config user.signingkey ~/.ssh/gwork_owner   # your machine only
+# then approve like this, as the owner:
+git commit -S -m "chore: lift the rule
+
+Gwork-Owner-Approved: display-only, rounding accepted"
+```
+
+- `allowedSigners` — repo-relative path to an [allowed-signers](https://git-scm.com/docs/git-config#Documentation/git-config.txt-gpgsshallowedSignersFile) file holding your **public** key. Commit it; the agent reading it changes nothing, since verification is math, not secrecy.
+- `sshKeygen` — optional absolute path to the verifier. Pin it on a machine where an agent could put a fake `ssh-keygen` earlier on `PATH`.
+- Verification always uses the **baseline** copy of the signers file, so an agent that appends its own key at HEAD and signs with it is rejected — and the change to the list is itself reported (check G4).
+- The checker never reads `gpg.format` / `gpg.ssh.program` / `gpg.ssh.allowedSignersFile` from git config: those are writable by anything holding the shell, and a shim that always answers "good" would pass every forgery.
+- Unset = the old trailer-only behavior, so existing repos keep working — but every accepted trailer now prints a `WARNING` naming the weakness.
+- **Protect the private key with a passphrase or a hardware key that needs a touch.** A key cached in `ssh-agent` with no per-use confirmation can be used by anything running as you, including the agent.
+
+Not closed by this: `git push --no-verify` still skips client-side hooks entirely (ROADMAP → bypass
+resistance B, server side).
+
 ### `modules` — path → module key mapping (shared by migrate and the gotcha hook)
 ```json
 "modules": [

@@ -184,9 +184,12 @@ the hand-written 3-rule stub `CLAUDE.md` in `setup.mjs` — **not** `CLAUDE.temp
 template's judgment rules (4b, "Not verified.", the scaffolding block) were ever in the sandbox, so no
 prior result speaks to them, in either direction.
 
-`setup.mjs` now takes `--claude=stub|full|lean` (stub = the old behavior, unchanged default) and
-`--out=<dir>`. The two arms differ by exactly the block — rule 4b is present in both, so a difference
-cannot be confounded with governance:
+`setup.mjs` takes `--claude=stub|full|lean` (stub = the old behavior, unchanged default) and
+`--out=<dir>`. `lean` is the template as it ships; `full` re-inserts
+`e2e/fixtures/scaffolding-block.md`, which is where the block now lives — it was cut from the
+template after this result, and the fixture exists so these numbers stay reproducible. The two arms
+differ by exactly the block, and rule 4b is present in both, so a difference cannot be confounded
+with governance:
 
 ```bash
 node e2e/setup.mjs s9 3 --claude=full --out=e2e/.ab/full   # block kept

@@ -41,6 +41,14 @@ trailer-gated. That is the same conclusion the kit was founded on, now measured 
 prompt layer: *no wording is a substitute for a check that blocks.* The open enforcement question
 (binding the trailer to something an agent cannot author) is recorded in ROADMAP, not fixed here.
 
+**Decision (owner, 2026-07-26): delete the block.** It is out of `CLAUDE.template.md`, and the
+per-model install choice in `ADAPT.md` / `SKILL.md` step 6 is gone with it — one template for every
+model. The two-consumer worry that motivated the split in M-001 turned out to be real (weak models
+do behave worse) but wrongly addressed: the fix belongs in the deterministic layer, not in more
+prompt text. The block survives only as `e2e/fixtures/scaffolding-block.md`, re-inserted by
+`setup.mjs --claude=full`, so the published S12 numbers stay reproducible. It is a fixture, not an
+option — anyone reintroducing it into the template should have a newer measurement than S12.
+
 ## M-001 — prompt layer trimmed for Opus 5-class models; verification scaffolding made conditional
 
 - **Date:** 2026-07-25 · **Trigger:** Opus 5 becoming the default driver for gwork repos

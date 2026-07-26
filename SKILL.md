@@ -46,7 +46,7 @@ Let `<SKILL>` = this skill folder, `<REPO>` = the target repo.
    ```
    The hook finds `task-log/INDEX.md` by walking up from cwd — one global copy serves every repo with the kit installed.
 6. **CLAUDE.md:** use `CLAUDE.template.md` as the skeleton — fill `<PROJECT_NAME>`, commands, SSOT, then **move long gotchas from the old CLAUDE.md into Known Bug Classes (one line per BC-xxx)**. Keep existing architecture/project specifics; cut only rules the hooks now enforce.
-   Then **make the one scaffolding choice**: the `SCAFFOLDING BLOCK` in the template is deleted for frontier models (Opus 5 class) and kept for weaker/older ones (incl. deepseek-v4-flash) — ask the owner which drives the repo if it isn't obvious, and see [ADAPT.md](ADAPT.md) → "Scaffolding level". Keeping it is the safe default.
+   The template is the same for every model — there is no per-model variant to pick (a deletable verification-scaffolding block existed for one day and was removed when e2e S12 measured no effect; see [ADAPT.md](ADAPT.md)).
 7. **Sentinel (optional, recommended when an agent runs the repo autonomously):** tamper-detector for the enforcement machinery itself — snapshots the hooks/checker/`core.hooksPath`/guards outside the repo and blocks a push (and denies edits) if any of them drifts from the owner's snapshot. As the **owner**, on a terminal:
    ```bash
    cp <SKILL>/scripts/gwork-sentinel.mjs <REPO>/scripts/

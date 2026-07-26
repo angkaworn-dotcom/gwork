@@ -14,8 +14,11 @@
 //   stub — the original 3-rule hand-written CLAUDE.md. Every S1-S11 result predating
 //          2026-07-25 was produced against this; it contains NONE of CLAUDE.template.md's
 //          judgment rules, so those runs measured the hooks, never the template.
-//   full — the real CLAUDE.template.md, scaffolding block kept (weaker-model install)
-//   lean — the real CLAUDE.template.md, scaffolding block deleted (frontier install)
+//   lean — the real CLAUDE.template.md exactly as it ships today.
+//   full — the same, plus fixtures/scaffolding-block.md re-inserted. That block shipped in
+//          the template for one day and was removed once S12 measured no protective effect
+//          (MODEL-NOTES M-002); it is kept as a fixture ONLY so the published S12 result
+//          stays reproducible. It is not an install option — do not reintroduce it.
 import { cpSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
 import { execSync } from 'node:child_process'
 import { join, dirname } from 'node:path'
@@ -115,17 +118,18 @@ const PACKAGE_JSON = `{
 }
 `
 
-// The scaffolding block's own delimiters, matched exactly as written in CLAUDE.template.md.
-// If this regex ever stops matching, the `lean` arm would silently ship the block and the
-// A/B would compare two identical prompts — so a miss is a hard error, never a fallthrough.
-const SCAFFOLD_RE = /<!-- ▼▼ SCAFFOLDING BLOCK[\s\S]*?▲▲ END SCAFFOLDING BLOCK ▲▲ -->\n+/
+// The block was cut from the template on 2026-07-26; `full` re-inserts it from the fixture at
+// the position it occupied (right before Delegation). A silent no-op here would make S12's two
+// arms byte-identical and quietly turn the A/B into a null experiment — so a miss is a throw.
+const ANCHOR = '## Delegation (subagents)'
 
 function claudeMdFor() {
   if (CLAUDE_MODE === 'stub') return FILES['CLAUDE.md']
   let t = readFileSync(join(KIT, 'CLAUDE.template.md'), 'utf8')
-  if (CLAUDE_MODE === 'lean') {
-    if (!SCAFFOLD_RE.test(t)) throw new Error('CLAUDE.template.md: SCAFFOLDING BLOCK markers not found — --claude=lean cannot guarantee the block is gone')
-    t = t.replace(SCAFFOLD_RE, '')
+  if (CLAUDE_MODE === 'full') {
+    if (!t.includes(ANCHOR)) throw new Error(`CLAUDE.template.md: "${ANCHOR}" anchor not found — --claude=full cannot place the scaffolding block, and the S12 arms would be identical`)
+    const block = readFileSync(join(E2E, 'fixtures/scaffolding-block.md'), 'utf8')
+    t = t.replace(ANCHOR, `${block.trim()}\n\n${ANCHOR}`)
   }
   // Fill the template's install placeholders, and drop the one enforced-rule row that would
   // be false here (the sandbox's gwork.json runs tasklog-check only, no tsc) — a real install

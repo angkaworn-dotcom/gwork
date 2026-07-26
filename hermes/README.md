@@ -9,7 +9,7 @@ Claude-Code-specific pieces have Hermes counterparts here.
 | gwork layer | On Hermes | Work needed |
 |---|---|---|
 | git hooks (pre-push, commit-msg) + tasklog-check + `forbidden` gate + `gwork.json` | Hermes's terminal tool runs real shell subprocesses — git hooks fire exactly as for a human | **none** |
-| `CLAUDE.template.md` | Hermes auto-loads `CLAUDE.md` as a context file (`agent/coding_context.py`) | **keep the scaffolding block** (below) |
+| `CLAUDE.template.md` | Hermes auto-loads `CLAUDE.md` as a context file (`agent/coding_context.py`) | **none** — one template for every model (e2e S12) |
 | gotcha-injection hook | `hooks/tasklog-gotcha-hermes.mjs` — Hermes shell hook on `pre_tool_call` | install (below) |
 | slash commands | `skills/gwork-*/SKILL.md` — Hermes skills, invoked as `/gwork-log` etc. | install (below) |
 

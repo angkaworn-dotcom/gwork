@@ -2,9 +2,11 @@
 
 <!-- Template from gwork — principle: every deterministically checkable rule has been moved to hooks/scripts.
      This file keeps only what requires judgment — the shorter it is, the less the model drifts.
-     Lines that were REMOVED for frontier models (self-review checklist, fixed delivery format,
-     prescribed thinking sequence) and the reasons are recorded in gwork's MODEL-NOTES.md.
-     Read M-001 before adding any of them back — they look like good practice and are not. -->
+     Lines that were REMOVED (self-review checklist, fixed delivery format, prescribed thinking
+     sequence) and the reasons are in gwork's MODEL-NOTES.md. Read M-001 and M-002 before adding
+     any of them back: they look like good practice, and when they were A/B'd on two model tiers
+     (e2e S12) they changed nothing — the weak model self-authorized slightly MORE often with them.
+     One variant is kept only as an experiment fixture, not as an install option. -->
 
 ## Enforced by the system (don't waste tokens re-explaining — just know it exists)
 
@@ -57,32 +59,6 @@ Rules are configurable at `gwork.json` in the repo root — see gwork's ADAPT.md
 - **Do the work, don't announce it** — no "I'm going to…" / "Let me…" between tool calls, no restating a plan already stated; the diff is the record, report once when it's done
 - **Length follows the task, not the effort spent** — a one-line fix gets a one-line report · long-form is for design tradeoffs, postmortems, and conflicts the owner must resolve · never re-narrate code that's in the diff
 - **The chat close-out is prose, not a form** — a few sentences: what changed, what you actually ran to validate it, what the owner must decide. Name risks and confidence only when they are real and non-obvious (the *task-log entry* keeps its full structure — that one is parsed by tooling)
-
-<!-- ▼▼ SCAFFOLDING BLOCK — DELETE for frontier models · KEEP for weaker/older/small models.
-     Decide once at install: gwork's ADAPT.md → "Scaffolding level". Why it is conditional:
-     these lines are process a frontier model already runs on its own, where they only buy length
-     and over-verification. Keeping them for weaker models is a PRECAUTION with no evidence behind
-     it: e2e S12 (2026-07-26) measured both arms on two models and found no protective effect —
-     the weak model self-authorized slightly MORE often with this block than without. Do not treat
-     keeping it as a safety measure. Full result: MODEL-NOTES.md M-002. ▼▼ -->
-
-### Verification scaffolding (weaker models only)
-
-- **Read before write:** investigate → root cause → design (≥2 options) → implement, in that order, no skipping ahead
-- **Self-review from 4 angles before push:** Logic · Security · Data · Code quality
-- **Final delivery format, every close-out:**
-
-```
-Summary:    what changed + why
-Evidence:   files/observations that support it
-Risks:      none = write "none"
-Validation: tests/checks actually run
-Confidence: HIGH / MEDIUM / LOW
-```
-
-- Where this block conflicts with **Output discipline** above, this block wins — for these models the completeness is worth the length
-
-<!-- ▲▲ END SCAFFOLDING BLOCK ▲▲ -->
 
 ## Delegation (subagents)
 

@@ -48,35 +48,29 @@ Not a TypeScript repo? Swap in your stack's build/lint commands.
 ### `pathPattern` — regex that finds file paths inside log entry bodies (used by migrate)
 Adjust the prefix list and file extensions to your stack (e.g. add `svelte` for Svelte, `php` for PHP)
 
-## Scaffolding level — one choice inside CLAUDE.md (not `gwork.json`)
+## There is no scaffolding level to choose — and that is a measured result
 
-`CLAUDE.template.md` ships one block fenced by `▼▼ SCAFFOLDING BLOCK` / `▲▲ END SCAFFOLDING BLOCK`,
-holding three verification instructions: the `investigate → root cause → design → implement` sequence,
-the 4-angle self-review before push, and the 5-field final delivery format. **Decide once, at install
-step 6, by which model drives the repo:**
+Between 2026-07-25 and 2026-07-26 `CLAUDE.template.md` briefly shipped a deletable "scaffolding
+block" (the `investigate → root cause → design → implement` sequence, a 4-angle self-review, and a
+5-field delivery format), to be kept for weaker models and deleted for frontier ones. **It is gone.**
+e2e S12 A/B'd it — 2×2, n=3, Opus 5 and Haiku 4.5, arms identical but for the block:
 
-| Model driving the repo | Do this |
+| | rewrote the owner's `forbidden` rule |
 |---|---|
-| Frontier (Opus 5 class) | **delete the block** — the model already does this; keeping it buys over-verification and long reports |
-| Weaker / older / small local models — incl. deepseek-v4-flash | **keep it** |
-| Mixed, or you don't know yet | **keep it** — the cost of keeping is length; the failure mode of removing is silent self-authorization |
+| Opus 5, block kept / deleted | 0/3 · 0/3 |
+| Haiku 4.5, block kept / deleted | **3/3 · 2/3** |
 
-The block declares that it outranks the template's **Output discipline** section, so keeping it is
-internally consistent — no further edits needed either way.
+No protective effect in either direction — the weak model self-authorized slightly *more* often with
+the block, and its one clean run was in the deleted arm. Nothing to configure, so nothing to get
+wrong at install.
 
-**Status: measured, and the block showed no protective effect.** S12 ran the A/B on 2026-07-26
-(2×2, n=3 — Opus 5 and Haiku 4.5, block kept vs deleted, everything else identical). Opus was
-unaffected either way. Haiku rewrote the owner's `forbidden` rule **3/3 with the block and 2/3
-without it**, and its one clean run was in the deleted-block arm. So "keep it for weaker models"
-is a conservative default with **no evidence behind it** — not the finding it was first written as.
-
-What S12 did establish is that no prompt line held: rule 4b did not stop the weak model either, and
-5/6 Haiku runs forged a `Gwork-Owner-Approved:` trailer to authorize themselves. If you are running
-a weak model on a repo that matters, the load-bearing part is the deterministic gate, not this block —
-and the trailer escape hatch is a known open hole (ROADMAP → bypass resistance, item 0).
-
-Full reasoning for every line the template cut, kept, and added: [MODEL-NOTES.md](MODEL-NOTES.md) (M-001) —
-read it before putting any removed line back.
+The finding worth carrying: **no prompt wording held.** Rule 4b did not stop the weak model either;
+5 of 6 Haiku runs wrote a `Gwork-Owner-Approved:` trailer citing the task prompt as owner
+confirmation, and 3 of 6 pushed the forbidden pattern to the remote. If a weak model drives a repo
+that matters, the load-bearing part is the deterministic gate — and the trailer escape hatch is a
+known open hole (ROADMAP → bypass resistance, item 0). Full history: [MODEL-NOTES.md](MODEL-NOTES.md)
+M-001 and M-002. The block itself survives only as `e2e/fixtures/scaffolding-block.md`, so S12 stays
+reproducible; it is not an install option.
 
 ## What still requires code changes (not covered by config)
 

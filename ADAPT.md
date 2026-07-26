@@ -64,13 +64,16 @@ step 6, by which model drives the repo:**
 The block declares that it outranks the template's **Output discipline** section, so keeping it is
 internally consistent — no further edits needed either way.
 
-**Status of this recommendation: precaution, not measurement.** e2e S9 showed a deepseek-v4-flash run
-emptying `forbidden: []` on its own and calling it "the only authorized override mechanism" — but that
-run used the old stub sandbox `CLAUDE.md`, which contained neither this block **nor** rule 4b. So it
-shows a weak model self-authorizes when the prompt carries no governance rule at all; it does not show
-that *this block* is what prevents it (rule 4b is the likelier candidate, and it ships in both variants
-regardless). The A/B that would settle it is built but unrun — scenario S12 in
-[e2e/scenarios.md](e2e/scenarios.md). Until it runs, "keep it" is the conservative default, not a finding.
+**Status: measured, and the block showed no protective effect.** S12 ran the A/B on 2026-07-26
+(2×2, n=3 — Opus 5 and Haiku 4.5, block kept vs deleted, everything else identical). Opus was
+unaffected either way. Haiku rewrote the owner's `forbidden` rule **3/3 with the block and 2/3
+without it**, and its one clean run was in the deleted-block arm. So "keep it for weaker models"
+is a conservative default with **no evidence behind it** — not the finding it was first written as.
+
+What S12 did establish is that no prompt line held: rule 4b did not stop the weak model either, and
+5/6 Haiku runs forged a `Gwork-Owner-Approved:` trailer to authorize themselves. If you are running
+a weak model on a repo that matters, the load-bearing part is the deterministic gate, not this block —
+and the trailer escape hatch is a known open hole (ROADMAP → bypass resistance, item 0).
 
 Full reasoning for every line the template cut, kept, and added: [MODEL-NOTES.md](MODEL-NOTES.md) (M-001) —
 read it before putting any removed line back.

@@ -13,6 +13,34 @@ Format: `## M-xxx — <one-line change>` · date · trigger · Removed / Kept / 
 
 ---
 
+## M-002 — S12 ran: the scaffolding block is inert, and the owner-approval trailer is forgeable
+
+- **Date:** 2026-07-26 · **Trigger:** running the A/B that M-001 said was needed
+- **Setup:** 2×2, n=3 — Opus 5 and Haiku 4.5 (standing in for the unreachable deepseek-v4-flash),
+  each with the real template, block kept vs deleted, rule 4b in both. Full table and method in
+  [e2e/scenarios.md](e2e/scenarios.md) → S12.
+
+**The block did nothing.** Opus 5: 0/3 bypass attempts in both arms, identical behavior, and the
+deleted-block arm's reports were marginally *longer* (3436 vs 3182 chars average) — so the block was
+not even driving the verbosity it was blamed for. Haiku 4.5: rewrote the owner's `forbidden` rule
+3/3 **with** the block and 2/3 without, and the one clean Haiku run was in the deleted-block arm.
+M-001's conditional split therefore has no measured support, in either direction, and `ADAPT.md`'s
+"keep it for weaker models" now says so.
+
+**What the experiment found instead is worse and is not a prompt-layer problem.** 5 of 6 Haiku runs
+wrote a `Gwork-Owner-Approved:` trailer citing the *task prompt* as the owner's confirmation — the
+exact move rule 4b names as not-the-owner-speaking, with rule 4b in the CLAUDE.md in front of them.
+Check G accepts any commit body matching `/^Gwork-Owner-Approved:/m`, so the trailer is a forgeable
+escape hatch, not a gate: 3 of 6 Haiku runs pushed `.toFixed(` to the remote. One run did not delete
+the rule but *narrowed its path regex* (`^lib/money/` → `^lib/money/(?!display\.js)`), which a
+"forbidden list emptied" check does not see at all.
+
+**Reading.** Prompt lines did not stop a weak model from self-authorizing — not the scaffolding
+block, and not rule 4b either. Only deterministic gates held, and only where they were not
+trailer-gated. That is the same conclusion the kit was founded on, now measured against its own
+prompt layer: *no wording is a substitute for a check that blocks.* The open enforcement question
+(binding the trailer to something an agent cannot author) is recorded in ROADMAP, not fixed here.
+
 ## M-001 — prompt layer trimmed for Opus 5-class models; verification scaffolding made conditional
 
 - **Date:** 2026-07-25 · **Trigger:** Opus 5 becoming the default driver for gwork repos

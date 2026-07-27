@@ -7,7 +7,7 @@ Two deterministic unit suites need no agent and no sandbox — run them first, t
 
 ```bash
 node e2e/tools/unit.mjs                 # sentinel filter stack (15 cases)
-node e2e/tools/unit-model-profile.mjs   # per-model profile injection (18 cases)
+node e2e/tools/unit-model-profile.mjs   # per-model profile injection (25 cases)
 ```
 
 ```bash

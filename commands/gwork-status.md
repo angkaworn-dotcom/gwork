@@ -8,8 +8,8 @@ Report the current repo's gwork status concisely. Communicate with the user in t
    - does `git config core.hooksPath` point to `githooks` · do `githooks/pre-push` + `commit-msg` exist
    - does `scripts/tasklog-check.mjs` exist · does `task-log/INDEX.md` exist
    - does `~/.claude/hooks/tasklog-gotcha.mjs` exist + is PreToolUse registered in `~/.claude/settings.json`
-   - does `~/.claude/hooks/model-profile.mjs` exist + are all three events registered (SessionStart ·
-     UserPromptSubmit · SubagentStart) · does a profile exist for the model you are running as
+   - does `~/.claude/hooks/model-profile.mjs` exist + are all four events registered (SessionStart ·
+     UserPromptSubmit · SubagentStart · PreToolUse) · does a profile exist for the model you are running as
      (`~/.claude/gwork-profiles/<model>.md`, or the repo's `profilesDir`) — no file = nothing is injected,
      which is a gap to report, not a failure
 2. **Config:** is there a `gwork.json` → does it parse → show which keys override defaults (no file = say all defaults are active)

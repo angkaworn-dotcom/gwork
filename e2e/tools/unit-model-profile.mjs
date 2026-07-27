@@ -97,6 +97,25 @@ writeFileSync(t14, '{"type":"assis' + '\n' + JSON.stringify(assistant('claude-op
 const r14 = run({ hook_event_name: 'UserPromptSubmit', session_id: sid(), cwd: work, transcript_path: t14 })
 check('unparseable line is skipped, scan continues', /verification layer/.test(r14.ctx), r14.out.slice(0, 200))
 
+// A /model switch is only visible in the prompt text at the moment it happens — the transcript
+// still shows the old model when UserPromptSubmit fires (measured against a real session).
+const sSwitch = sid()
+const rBefore = run({ hook_event_name: 'UserPromptSubmit', session_id: sSwitch, cwd: work, transcript_path: t1, prompt: 'do the thing' })
+check('baseline: transcript model injected', /verification layer/.test(rBefore.ctx), rBefore.out.slice(0, 200))
+const rSwitch = run({ hook_event_name: 'UserPromptSubmit', session_id: sSwitch, cwd: work, transcript_path: t1, prompt: '/model claude-fable-5' })
+check('/model prompt beats the stale transcript model', /is your memory/.test(rSwitch.ctx), rSwitch.out.slice(0, 200))
+check('switch says the old profile no longer applies', /profile above for opus-5 no longer applies/.test(rSwitch.ctx), rSwitch.ctx.slice(0, 160))
+const rProse = run({ hook_event_name: 'UserPromptSubmit', session_id: sid(), cwd: work, transcript_path: t1, prompt: 'should I /model claude-fable-5 or not?' })
+check('/model mentioned mid-sentence is not a switch', /verification layer/.test(rProse.ctx), rProse.out.slice(0, 200))
+
+// PreToolUse is the backstop: it fires mid-turn, once the switch is in the transcript
+const sTool = sid()
+const rTool = run({ hook_event_name: 'PreToolUse', session_id: sTool, cwd: work, transcript_path: t2, tool_name: 'Bash' })
+check('PreToolUse catches a switch mid-turn', /is your memory/.test(rTool.ctx), rTool.out.slice(0, 200))
+check('PreToolUse wraps with its own event name', JSON.parse(rTool.out || '{}').hookSpecificOutput?.hookEventName === 'PreToolUse')
+const rTool2 = run({ hook_event_name: 'PreToolUse', session_id: sTool, cwd: work, transcript_path: t2, tool_name: 'Bash' })
+check('PreToolUse silent on every later tool call', rTool2.out === '', rTool2.out.slice(0, 200))
+
 // /clear wipes the context but not the state file — SessionStart(source:clear) must reset it
 const sClear = sid()
 run({ hook_event_name: 'UserPromptSubmit', session_id: sClear, cwd: work, transcript_path: t1 })

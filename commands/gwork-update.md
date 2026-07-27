@@ -53,8 +53,8 @@ version added keys, point the user at `ADAPT.md`; don't write them.
 
 - `node scripts/tasklog-check.mjs` still green (repo case) — red after an update is a finding, report it verbatim
 - PreToolUse for `tasklog-gotcha.mjs` still registered in `~/.claude/settings.json`; if `model-profile.mjs`
-  is present, so are its three events (SessionStart · UserPromptSubmit · SubagentStart) — a missing one is
-  silent, not loud: the profile just never arrives
+  is present, so are its four events (SessionStart · UserPromptSubmit · SubagentStart · PreToolUse) — a
+  missing one is silent, not loud: the profile just never arrives
 - `node e2e/tools/unit-model-profile.mjs` from the kit after any change to the profile hook
 - Repo copies are an uncommitted working-tree change — say so and suggest `chore: update gwork kit to <short-sha>`;
   don't commit on the user's behalf

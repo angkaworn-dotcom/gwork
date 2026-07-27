@@ -25,7 +25,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync, openSync,
 import { join, dirname, isAbsolute } from 'node:path'
 import { tmpdir, homedir } from 'node:os'
 
-const EVENT = { SessionStart: 'top', SubagentStart: 'top', UserPromptSubmit: 'wrapped' }
+const EVENT = { SessionStart: 'top', SubagentStart: 'top', UserPromptSubmit: 'wrapped', PreToolUse: 'wrapped' }
 
 let input = ''
 try { input = readFileSync(0, 'utf8').replace(/^﻿/, '') } catch { process.exit(0) } // strip BOM some shells prepend when piping
@@ -120,7 +120,17 @@ const modelFromTranscript = (path) => {
   return null
 }
 
-const raw = (event === 'SessionStart' && typeof data?.model === 'string' && data.model)
+// A `/model` switch is submitted as a prompt of its own, and UserPromptSubmit fires with that
+// text BEFORE any of it reaches the transcript — measured, not assumed: at hook time the newest
+// transcript record is still the previous turn's assistant message, carrying the OLD model. So the
+// prompt text is the only signal that exists at the moment of the switch; without reading it the
+// new profile lands a full turn late, while the previous model's profile is still live in context.
+const promptSwitch = event === 'UserPromptSubmit' && typeof data?.prompt === 'string'
+  ? data.prompt.match(/^\s*\/model\s+(?:set\s+)?([\w.-]+)\s*$/)?.[1]
+  : null
+
+const raw = promptSwitch
+  || (event === 'SessionStart' && typeof data?.model === 'string' && data.model)
   || modelFromTranscript(data?.transcript_path)
 if (!raw) process.exit(0) // fresh session, nothing has run yet — the next prompt resolves it
 
@@ -135,7 +145,15 @@ try { state = JSON.parse(readFileSync(stateFile, 'utf8')) } catch { /* fresh */ 
 if (state.model === key) process.exit(0)
 
 const profile = readProfile(key) // unknown model → no file → stay silent rather than guess
+const previous = state.model
 try { mkdirSync(stateDir, { recursive: true }); writeFileSync(stateFile, JSON.stringify({ model: key })) } catch { /* re-inject next prompt at worst */ }
 if (!profile) process.exit(0)
 
-emit(`[gwork] Running on ${raw}. Project rules that differ for this model:\n\n${profile}`)
+// After a switch the previous model's profile is still sitting in the context window, and the two
+// deliberately contradict each other (Opus 5: don't delegate verification · Fable 5: do). Saying so
+// is cheaper than hoping the newer block wins.
+const supersede = previous && previous !== key
+  ? ` The gwork profile above for ${previous} no longer applies — this replaces it.`
+  : ''
+
+emit(`[gwork] Running on ${raw}.${supersede} Project rules that differ for this model:\n\n${profile}`)

@@ -4,6 +4,14 @@ Append-only, newest first. Every entry = a bug the kit hit in a real repo, fixed
 
 Format: `## L-xxx — <one-line symptom>` · date · repo · Root cause · Fix · Harness.
 
+## L-005 — a `/model` switch is not in the transcript when UserPromptSubmit fires
+
+- **Date:** 2026-07-27 · **Repo:** gwork itself (model-profile hook, first live use)
+- **Symptom:** switching model mid-session left the **previous** model's profile live in context for a full turn. Opus 5 ran a turn under Fable 5's "delegate freely, use verifier subagents" — the exact conflict the profiles exist to prevent.
+- **Root cause:** the design assumed the `<local-command-stdout>Set model to X</local-command-stdout>` record is written before the next `UserPromptSubmit` hook runs. It is not. Measured against a live session: the record *is* in the transcript above the prompt afterwards, but at hook time the newest record was still the previous turn's assistant message carrying the **old** model — so the hook saw no change and stayed silent. Unit tests all passed because they synthesised transcripts that already contained the switch; the assumption itself was never tested.
+- **Fix:** three layers instead of one — the `/model <id>` prompt text is read directly at `UserPromptSubmit` (the only signal that exists at the moment of the switch), `PreToolUse` was added as a backstop for switches made another way (by then the transcript has it), and a switch now states that the previous profile no longer applies, since it is still sitting in the context window.
+- **Harness:** `node e2e/tools/unit-model-profile.mjs` 25 cases, green twice in a row. **Lesson for the kit:** when a hook depends on *when* the harness writes something, test against a real transcript — a synthetic fixture encodes the assumption instead of checking it.
+
 ## L-004 — a hook unit suite goes green once, then red on every rerun
 
 - **Date:** 2026-07-27 · **Repo:** gwork itself (model-profile hook)

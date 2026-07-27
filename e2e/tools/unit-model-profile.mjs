@@ -1,0 +1,119 @@
+#!/usr/bin/env node
+/**
+ * unit-model-profile.mjs — deterministic cases for hooks/model-profile.mjs.
+ * No network, no live agent: transcripts are synthesised fixtures. Run from the kit root:
+ *   node e2e/tools/unit-model-profile.mjs
+ */
+import { spawnSync } from 'node:child_process'
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { fileURLToPath } from 'node:url'
+
+const KIT = fileURLToPath(new URL('../..', import.meta.url))
+const HOOK = join(KIT, 'hooks', 'model-profile.mjs')
+const PROFILES = join(KIT, 'profiles')
+
+const work = mkdtempSync(join(tmpdir(), 'gwork-profile-test-'))
+const transcript = (lines) => {
+  const p = join(work, `t${Math.random().toString(36).slice(2)}.jsonl`)
+  writeFileSync(p, lines.map(o => JSON.stringify(o)).join('\n') + '\n')
+  return p
+}
+const assistant = (model, extra = {}) => ({ type: 'assistant', message: { model, content: [{ type: 'text', text: 'hi' }] }, ...extra })
+const switched = (to) => ({ type: 'user', message: { content: `<local-command-stdout>Set model to ${to}</local-command-stdout>` } })
+
+let n = 0, fail = 0
+const run = (payload, env = {}) => {
+  const r = spawnSync('node', [HOOK], {
+    input: JSON.stringify(payload), encoding: 'utf8',
+    env: { ...process.env, GWORK_PROFILES: PROFILES, ...env },
+  })
+  return { out: r.stdout.trim(), err: r.stderr.trim(), code: r.status,
+    ctx: (() => { try { const j = JSON.parse(r.stdout); return j.additionalContext ?? j.hookSpecificOutput?.additionalContext ?? '' } catch { return '' } })() }
+}
+// Unique per run: the hook keeps "already injected" state per session_id in a shared tmp dir,
+// so reusing fixed ids makes the second run of this suite fail against a correct hook.
+const RUN = `${process.pid}-${Date.now().toString(36)}`
+const sid = () => `test-${RUN}-${++n}`
+const check = (name, cond, detail = '') => {
+  if (cond) console.log(`  ok   ${name}`)
+  else { fail++; console.log(`  FAIL ${name}${detail ? ' — ' + detail : ''}`) }
+}
+
+// --- resolution ---
+const t1 = transcript([assistant('claude-opus-5')])
+const r1 = run({ hook_event_name: 'UserPromptSubmit', session_id: sid(), cwd: work, transcript_path: t1 })
+check('assistant model → matching profile', /verification layer/.test(r1.ctx), r1.out.slice(0, 200))
+
+// a /model switch is recorded before the next assistant turn — must win over the older assistant line
+const t2 = transcript([assistant('claude-opus-5'), switched('claude-fable-5')])
+const r2 = run({ hook_event_name: 'UserPromptSubmit', session_id: sid(), cwd: work, transcript_path: t2 })
+check('mid-session /model switch wins over the last assistant turn', /is your memory/.test(r2.ctx), r2.out.slice(0, 200))
+
+// the switch line must not be matched by substring: an agent grepping for it writes the same text into tool results
+const t3 = transcript([
+  assistant('claude-opus-5'),
+  { type: 'user', message: { content: [{ type: 'tool_result', content: '"Set model to claude-fable-5"' }] } },
+])
+const r3 = run({ hook_event_name: 'UserPromptSubmit', session_id: sid(), cwd: work, transcript_path: t3 })
+check('"Set model to" inside a tool result is not a switch', /verification layer/.test(r3.ctx), r3.out.slice(0, 200))
+
+// subagent turns carry their own model — they must not shadow the main model
+const t4 = transcript([assistant('claude-opus-5'), assistant('claude-haiku-4-5-20251001', { isSidechain: true })])
+const r4 = run({ hook_event_name: 'UserPromptSubmit', session_id: sid(), cwd: work, transcript_path: t4 })
+check('sidechain (subagent) turns are skipped', /verification layer/.test(r4.ctx), r4.out.slice(0, 200))
+
+// --- shapes ---
+const r5 = run({ hook_event_name: 'SessionStart', session_id: sid(), cwd: work, model: 'claude-sonnet-5', source: 'startup' })
+check('SessionStart emits top-level additionalContext', JSON.parse(r5.out || '{}').additionalContext !== undefined && /scope boundaries/.test(r5.ctx))
+const r6 = run({ hook_event_name: 'UserPromptSubmit', session_id: sid(), cwd: work, transcript_path: t1 })
+check('UserPromptSubmit emits hookSpecificOutput', JSON.parse(r6.out || '{}').hookSpecificOutput?.hookEventName === 'UserPromptSubmit')
+const r7 = run({ hook_event_name: 'SubagentStart', session_id: sid(), cwd: work })
+check('SubagentStart → subagent profile, no model needed', /Never commit or push/.test(r7.ctx), r7.out.slice(0, 200))
+
+// --- anti-spam ---
+const s = sid()
+run({ hook_event_name: 'UserPromptSubmit', session_id: s, cwd: work, transcript_path: t1 })
+const r8 = run({ hook_event_name: 'UserPromptSubmit', session_id: s, cwd: work, transcript_path: t1 })
+check('same model twice → injected once', r8.out === '', r8.out.slice(0, 200))
+const t9 = transcript([assistant('claude-opus-5'), switched('claude-fable-5')])
+const r9 = run({ hook_event_name: 'UserPromptSubmit', session_id: s, cwd: work, transcript_path: t9 })
+check('switching back mid-session re-injects', /is your memory/.test(r9.ctx), r9.out.slice(0, 200))
+
+// --- fail-open ---
+const r10 = run({ hook_event_name: 'SessionStart', session_id: sid(), cwd: work, model: 'claude-nextgen-9' })
+check('unknown model → silent, never a guessed profile', r10.out === '', r10.out.slice(0, 200))
+const r11 = run({ hook_event_name: 'UserPromptSubmit', session_id: sid(), cwd: work, transcript_path: join(work, 'missing.jsonl') })
+check('missing transcript → silent, exit 0', r11.out === '' && r11.code === 0, JSON.stringify(r11))
+const r12 = spawnSync('node', [HOOK], { input: 'not json', encoding: 'utf8' })
+check('garbage stdin → exit 0, no output', r12.status === 0 && r12.stdout.trim() === '')
+const r13 = run({ hook_event_name: 'PreToolUse', session_id: sid(), cwd: work, tool_name: 'Edit' })
+check('unrelated event ignored', r13.out === '')
+
+// truncated first record (tail read) must not crash the scan
+const t14 = transcript([assistant('claude-opus-5')])
+writeFileSync(t14, '{"type":"assis' + '\n' + JSON.stringify(assistant('claude-opus-5')) + '\n')
+const r14 = run({ hook_event_name: 'UserPromptSubmit', session_id: sid(), cwd: work, transcript_path: t14 })
+check('unparseable line is skipped, scan continues', /verification layer/.test(r14.ctx), r14.out.slice(0, 200))
+
+// --- per-repo opt-out ---
+const optOut = join(work, 'optout')
+mkdirSync(optOut, { recursive: true })
+writeFileSync(join(optOut, 'gwork.json'), JSON.stringify({ profiles: false }))
+const r15 = run({ hook_event_name: 'SessionStart', session_id: sid(), cwd: optOut, model: 'claude-opus-5' })
+check('gwork.json profiles:false disables injection', r15.out === '', r15.out.slice(0, 200))
+
+// --- per-repo override dir wins over the machine copy ---
+const ovRepo = join(work, 'override')
+mkdirSync(join(ovRepo, 'myprofiles'), { recursive: true })
+writeFileSync(join(ovRepo, 'gwork.json'), JSON.stringify({ profilesDir: 'myprofiles' }))
+writeFileSync(join(ovRepo, 'myprofiles', 'opus-5.md'), 'REPO OVERRIDE RULE')
+const r16 = run({ hook_event_name: 'SessionStart', session_id: sid(), cwd: ovRepo, model: 'claude-opus-5' }, { GWORK_PROFILES: '' })
+check('repo profilesDir overrides the machine copy', /REPO OVERRIDE RULE/.test(r16.ctx), r16.out.slice(0, 200))
+
+check('no stderr noise in any case', [r1, r2, r3, r4, r5, r6, r7, r9, r10, r11, r13, r14, r15, r16].every(r => !r.err))
+
+rmSync(work, { recursive: true, force: true })
+console.log(fail ? `\n${fail} FAILED` : '\nall model-profile cases pass')
+process.exit(fail ? 1 : 0)

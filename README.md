@@ -15,6 +15,7 @@ One principle: **any rule that can be checked deterministically becomes a hook/s
 | absolute prohibitions (`forbidden` patterns in gwork.json) | tasklog-check (check F) | push blocked — a prompt-level order is not an override; only the repo owner is, via gwork.json |
 | read gotchas before touching a module | `hooks/tasklog-gotcha.mjs` (PreToolUse) | auto-injected — the AI never has to remember |
 | Evidence / Clarify Early / design decisions belong to the owner / subagents never commit | `CLAUDE.template.md` (prompt) | judgment — can't be automated |
+| rules that differ per model (delegation, task-log-as-memory, small-model scaffolding) | `hooks/model-profile.mjs` + `profiles/<model>.md` | judgment — injected for the running model, never blocking |
 
 ## Use as a Claude Code skill
 
@@ -64,6 +65,12 @@ cp hooks/tasklog-gotcha.mjs ~/.claude/hooks/
 "hooks": { "PreToolUse": [ { "matcher": "Edit|Write|MultiEdit",
   "hooks": [{ "type": "command", "command": "node \"<ABS>/.claude/hooks/tasklog-gotcha.mjs\"", "timeout": 15 }] } ] }
 ```
+
+## Per-model profiles
+
+CLAUDE.md carries what every model needs; `profiles/<model>.md` carries what only one of them does — because the guidance genuinely conflicts. Opus 5 is told not to use subagents to verify its own work; Fable 5 is told to delegate freely and use verifier subagents on long runs; small models keep the self-review scaffolding that makes large models over-verify. `hooks/model-profile.mjs` injects the file matching the model actually running (including after a mid-session `/model` switch) and nothing else. Unknown model = nothing injected.
+
+Everything the agent harness already handles per model — response length, scope, progress updates, self-correction — is deliberately **absent** from both layers. Repeating it there costs tokens and causes over-verification.
 
 ## Configure rules freely at `gwork.json`
 

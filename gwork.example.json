@@ -22,6 +22,9 @@
     { "path": "^lib/money/", "pattern": "\\.toFixed\\(", "reason": "money display must use formatMoney() — prod rounding bug" }
   ],
 
+  "$comment_profiles": "Per-model rule injection (hooks/model-profile.mjs): the model actually running gets the gwork rules that differ for it. Default: true, reading ~/.claude/gwork-profiles. Set false to disable here, or add \"profilesDir\": \"<path>\" to use your own <model>.md set — see ADAPT.md.",
+  "profiles": true,
+
   "pathPattern": "(?:modules|app|lib|components|prisma|tests|hooks|scripts)/[\\w\\-./[\\]]+\\.(?:tsx?|mjs|prisma|json|md)",
 
   "modules": [

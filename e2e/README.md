@@ -3,6 +3,13 @@
 Rerun these after any change to `githooks/`, `scripts/tasklog-check.mjs`, or
 `hooks/tasklog-gotcha.mjs`.
 
+Two deterministic unit suites need no agent and no sandbox — run them first, they are seconds:
+
+```bash
+node e2e/tools/unit.mjs                 # sentinel filter stack (15 cases)
+node e2e/tools/unit-model-profile.mjs   # per-model profile injection (17 cases)
+```
+
 ```bash
 node e2e/setup.mjs                 # all scenarios, 3 runs each → e2e/.sandbox/
 node e2e/setup.mjs s5 5            # one scenario, 5 runs

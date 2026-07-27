@@ -7,7 +7,7 @@ description: Install the gwork discipline kit (git pre-push/commit-msg hooks, ta
 
 One principle: **any rule that can be checked deterministically becomes a hook/script that actually blocks.** CLAUDE.md keeps only judgment calls.
 
-All source files live in this skill folder (`scripts/`, `githooks/`, `hooks/`, `commands/`, `CLAUDE.template.md`). Communicate with the user in their language. `e2e/` is the kit's own test harness — never copy it into a target repo; rerun it after changing any hook or script (see [e2e/README.md](e2e/README.md)). Field failures and their fixes live in [LESSONS.md](LESSONS.md) — **read its newest entries before an install**, and when the kit itself misbehaves follow the Self-repair protocol below.
+All source files live in this skill folder (`scripts/`, `githooks/`, `hooks/`, `commands/`, `profiles/`, `CLAUDE.template.md`). Communicate with the user in their language. `e2e/` is the kit's own test harness — never copy it into a target repo; rerun it after changing any hook or script (see [e2e/README.md](e2e/README.md)). Field failures and their fixes live in [LESSONS.md](LESSONS.md) — **read its newest entries before an install**, and when the kit itself misbehaves follow the Self-repair protocol below.
 
 ## What is enforced by what
 
@@ -20,6 +20,7 @@ All source files live in this skill folder (`scripts/`, `githooks/`, `hooks/`, `
 | absolute prohibitions (`forbidden` patterns in gwork.json) | tasklog-check (check F) | push blocked — only the owner overrides, via gwork.json |
 | read gotchas before touching a module | `hooks/tasklog-gotcha.mjs` (PreToolUse) | auto-injected |
 | Evidence / Clarify Early / design decisions belong to the owner / subagents never commit | CLAUDE.md (prompt) | judgment |
+| rules that differ per model (delegation, task-log-as-memory, small-model scaffolding) | `hooks/model-profile.mjs` + `profiles/<model>.md` | judgment — injected, never blocking |
 
 ## Install into a target repo
 
@@ -45,6 +46,14 @@ Let `<SKILL>` = this skill folder, `<REPO>` = the target repo.
      "hooks": [{ "type": "command", "command": "node \"C:/Users/<USER>/.claude/hooks/tasklog-gotcha.mjs\"", "timeout": 15 }] } ]
    ```
    The hook finds `task-log/INDEX.md` by walking up from cwd — one global copy serves every repo with the kit installed.
+5b. **Per-model profiles (once per machine, optional but recommended):** copy `hooks/model-profile.mjs` → `~/.claude/hooks/` and `profiles/` → `~/.claude/gwork-profiles/`, then register three events in `~/.claude/settings.json` (merge, don't overwrite):
+   ```json
+   "SessionStart":     [ { "hooks": [{ "type": "command", "command": "node \"C:/Users/<USER>/.claude/hooks/model-profile.mjs\"", "timeout": 10 }] } ],
+   "UserPromptSubmit": [ { "hooks": [{ "type": "command", "command": "node \"C:/Users/<USER>/.claude/hooks/model-profile.mjs\"", "timeout": 10 }] } ],
+   "SubagentStart":    [ { "hooks": [{ "type": "command", "command": "node \"C:/Users/<USER>/.claude/hooks/model-profile.mjs\"", "timeout": 10 }] } ]
+   ```
+   Injects only the gwork rules that differ per model (Opus 5 must not spawn verifier subagents · Fable 5 should delegate freely and treat task-log as memory · small models still need the self-review scaffolding). One file per model in `profiles/`, injected once per model per session — `UserPromptSubmit` is what catches a mid-session `/model` switch, since `SessionStart` doesn't re-fire. Unknown model = nothing injected. Per-repo opt-out: `"profiles": false` in gwork.json.
+   **This layer is prompt, not enforcement** — it aims the prompt better, it doesn't block anything. The gates stay pre-push/commit-msg/tasklog-check.
 6. **CLAUDE.md:** use `CLAUDE.template.md` as the skeleton — fill `<PROJECT_NAME>`, commands, SSOT, then **move long gotchas from the old CLAUDE.md into Known Bug Classes (one line per BC-xxx)**. Keep existing architecture/project specifics; cut only rules the hooks now enforce.
 7. **Sentinel (optional, recommended when an agent runs the repo autonomously):** tamper-detector for the enforcement machinery itself — snapshots the hooks/checker/`core.hooksPath`/guards outside the repo and blocks a push (and denies edits) if any of them drifts from the owner's snapshot. As the **owner**, on a terminal:
    ```bash

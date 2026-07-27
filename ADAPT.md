@@ -45,6 +45,16 @@ Not a TypeScript repo? Swap in your stack's build/lint commands.
 - Unmatched paths: migrate → `other`/`misc` rows · gotcha hook → silent (make sure folders with real gotchas are covered)
 - This is the single rule set read by both `scripts/migrate.mjs` and `hooks/tasklog-gotcha.mjs` — the old two-copy sync problem is gone
 
+### `profiles` / `profilesDir` — per-model rule injection (used by `hooks/model-profile.mjs`)
+```json
+"profiles": false,
+"profilesDir": ".gwork/profiles"
+```
+- `profiles: false` turns the injection off for this repo · default: on
+- `profilesDir` points at a folder of `<model>.md` files that **replaces** the machine-level set for this repo (relative to the repo root, or absolute). Lookup order: `$GWORK_PROFILES` → `profilesDir` → `<repo>/.gwork/profiles` → `~/.claude/gwork-profiles`
+- File names are the model id minus the `claude-` prefix and any date suffix: `claude-haiku-4-5-20251001` → `haiku-4-5.md`. `subagent.md` is injected into every subagent regardless of model
+- A model with no file gets **nothing injected** — never a guessed profile. Add the file when a new model ships
+
 ### `pathPattern` — regex that finds file paths inside log entry bodies (used by migrate)
 Adjust the prefix list and file extensions to your stack (e.g. add `svelte` for Svelte, `php` for PHP)
 

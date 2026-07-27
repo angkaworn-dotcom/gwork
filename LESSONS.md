@@ -4,6 +4,14 @@ Append-only, newest first. Every entry = a bug the kit hit in a real repo, fixed
 
 Format: `## L-xxx — <one-line symptom>` · date · repo · Root cause · Fix · Harness.
 
+## L-004 — a hook unit suite goes green once, then red on every rerun
+
+- **Date:** 2026-07-27 · **Repo:** gwork itself (model-profile hook)
+- **Symptom:** `node e2e/tools/unit-model-profile.mjs` passed 17/17, then failed 8/17 on the very next run with no code change in between. Re-running again stayed red.
+- **Root cause:** the hooks keep per-session state in a **shared tmp dir** (`tmpdir()/<hook>/<session_id>.json`) so a rule is injected once per session, not once per prompt. The suite used fixed session ids (`s1`, `s2`…), so the second run looked like the same session continuing — the hook correctly stayed silent and the assertions expecting an injection failed. The hook was right; the test was not rerun-safe.
+- **Fix:** session ids in the suite are now unique per run (`test-<pid>-<base36 time>-<n>`), with a comment saying why. Any future test of a state-keeping hook must do the same, or clear the state dir first.
+- **Harness:** `node e2e/tools/unit-model-profile.mjs` green twice in a row · `node e2e/tools/unit.mjs` 15/15 unaffected.
+
 ## L-003 — tasklog-check spams `fatal: path ... does not exist` on every run against a young baseline
 
 - **Date:** 2026-07-23 · **Repo:** sale-visit-system (first install)

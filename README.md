@@ -34,6 +34,7 @@ Then tell Claude Code to **"install gwork"** in your target repo — full steps 
 | `/gwork-rule <rule>` | add/change a rule — routes it to gwork.json / code / CLAUDE.md automatically |
 | `/gwork-import <path>` | bulk-import rules from an old CLAUDE.md or any rules file — classify, dedupe, route as one reviewed batch |
 | `/gwork-status` | report install state + active config + log health |
+| `/gwork-update` | pull the latest kit and re-sync every copy made from it (machine files + this repo's hooks/scripts) |
 
 ## Use with Hermes Agent
 

@@ -38,7 +38,7 @@ Let `<SKILL>` = this skill folder, `<REPO>` = the target repo.
 3. **task-log:**
    - Existing log (entries headed `## YYYY-MM-DD — title`): `node scripts/migrate.mjs "<log file>"` → produces `task-log/` (source file untouched)
    - None: create `task-log/INDEX.md` (empty table header `| Module | Entries (latest first) | BC | Gotcha (≤1 line) |`) + an empty `task-log/<YYYY-MM>.md`
-4. **Slash commands (once per machine):** `cp <SKILL>/commands/*.md ~/.claude/commands/` → gives `/gwork-log` `/gwork-check` `/gwork-rule` `/gwork-status`
+4. **Slash commands (once per machine):** `cp <SKILL>/commands/*.md ~/.claude/commands/` → gives `/gwork-log` `/gwork-check` `/gwork-rule` `/gwork-status` `/gwork-update`
 5. **PreToolUse hook (once per machine):** copy `hooks/tasklog-gotcha.mjs` → `~/.claude/hooks/` and add to `~/.claude/settings.json` (merge into existing hooks, don't overwrite):
    ```json
    "PreToolUse": [ { "matcher": "Edit|Write|MultiEdit",

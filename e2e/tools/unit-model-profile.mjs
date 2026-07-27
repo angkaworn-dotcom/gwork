@@ -116,6 +116,16 @@ check('PreToolUse wraps with its own event name', JSON.parse(rTool.out || '{}').
 const rTool2 = run({ hook_event_name: 'PreToolUse', session_id: sTool, cwd: work, transcript_path: t2, tool_name: 'Bash' })
 check('PreToolUse silent on every later tool call', rTool2.out === '', rTool2.out.slice(0, 200))
 
+// Stop closes the no-tool-turn gap: a text-only turn after a switch never fires PreToolUse,
+// so the end of that turn is the last chance to have the profile in place before the next one
+const sStop = sid()
+run({ hook_event_name: 'UserPromptSubmit', session_id: sStop, cwd: work, transcript_path: t1, prompt: 'hi' })
+const rStop = run({ hook_event_name: 'Stop', session_id: sStop, cwd: work, transcript_path: t2 })
+check('Stop injects a switch the turn never revealed', /is your memory/.test(rStop.ctx), rStop.out.slice(0, 200))
+check('Stop wraps with its own event name', JSON.parse(rStop.out || '{}').hookSpecificOutput?.hookEventName === 'Stop')
+const rStop2 = run({ hook_event_name: 'Stop', session_id: sStop, cwd: work, transcript_path: t2 })
+check('Stop silent when nothing changed', rStop2.out === '', rStop2.out.slice(0, 200))
+
 // /clear wipes the context but not the state file — SessionStart(source:clear) must reset it
 const sClear = sid()
 run({ hook_event_name: 'UserPromptSubmit', session_id: sClear, cwd: work, transcript_path: t1 })

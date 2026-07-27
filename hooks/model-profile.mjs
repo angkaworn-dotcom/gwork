@@ -25,7 +25,11 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync, openSync,
 import { join, dirname, isAbsolute } from 'node:path'
 import { tmpdir, homedir } from 'node:os'
 
-const EVENT = { SessionStart: 'top', SubagentStart: 'top', UserPromptSubmit: 'wrapped', PreToolUse: 'wrapped' }
+// Four chances to catch a model change, because no single one covers every path (L-005):
+// UserPromptSubmit reads the prompt text (a typed /model never reaches the transcript in time),
+// PreToolUse catches it at the first tool call (by then the transcript has it), Stop closes the
+// remaining gap — a turn with no tool calls at all — by injecting before the NEXT turn starts.
+const EVENT = { SessionStart: 'top', SubagentStart: 'top', UserPromptSubmit: 'wrapped', PreToolUse: 'wrapped', Stop: 'wrapped' }
 
 let input = ''
 try { input = readFileSync(0, 'utf8').replace(/^﻿/, '') } catch { process.exit(0) } // strip BOM some shells prepend when piping

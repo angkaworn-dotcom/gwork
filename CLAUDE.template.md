@@ -1,7 +1,9 @@
 # CLAUDE.md — <PROJECT_NAME>
 
-<!-- Template from gwork — principle: every deterministically checkable rule has been moved to hooks/scripts.
-     This file keeps only what requires judgment — the shorter it is, the less the model drifts. -->
+<!-- Template from gwork — two principles:
+     1. every deterministically checkable rule has been moved to hooks/scripts
+     2. this file carries only what the agent harness doesn't already handle
+     What's left is judgment specific to this repo — the shorter it is, the less the model drifts. -->
 
 ## Enforced by the system (don't waste tokens re-explaining — just know it exists)
 
@@ -21,6 +23,7 @@ Rules are configurable at `gwork.json` in the repo root — see gwork's ADAPT.md
 - **Lookup:** the hook injects gotchas automatically when you edit files — if you need more context, open **only the entries INDEX points to**, never a whole shard
 - **Close out every task, never batch later:** write an entry in `task-log/<YYYY-MM>.md` — anchor `<a id="YYYY-MM-DD-n"></a>` + context / bug+fix+commit / Decision / Gotcha / Validation / **impact on prior work** (none = say "none") → update the INDEX row of every touched module **in the same commit** (pre-push catches it if you forget)
 - **Promote → BC (two triggers):** a gotcha repeated across ≥2 entries **or** one destructive incident (overwritten files / lost data / broken deploy) → add BC-xxx to this file immediately and reduce the INDEX row to just the BC number
+- **Entry length:** cover the substance and stop — no filler sections, no restating the diff. An entry is a lookup key for future work, not a report
 - Entries may be written in any language — the tooling only parses structure, not prose
 
 ## Known Bug Classes
@@ -45,25 +48,27 @@ Rules are configurable at `gwork.json` in the repo root — see gwork's ADAPT.md
 
 - **Evidence-based:** every conclusion cites a verified file:line · separate observation from inference · nothing found = write "Insufficient evidence found." and keep investigating
 - **Anti-hallucination:** haven't opened it = write "Not verified." · recalled memory may be stale → verify before use
-- **Read before write:** investigate → root cause → design (≥2 options) → implement · start only at Confidence ≥ MEDIUM (LOW = stop and investigate further)
+- **Read before write:** investigate → root cause → design (≥2 options) → implement
 - **Debugging always has a hypothesis** — never patch symptoms, never guess randomly
-- **Self-review from 4 angles before push:** Logic · Security · Data · Code quality
 
-**Final delivery format (every close-out):**
-```
-Summary:    what changed + why
-Evidence:   files/observations that support it
-Risks:      none = write "none"
-Validation: tests/checks actually run
-Confidence: HIGH / MEDIUM / LOW
-```
+<!-- Deliberately absent, do not add back: self-review checklists, confidence gates, delivery-format
+     templates, and instructions about response length, scope, or progress updates. Current models verify
+     their own work and the harness already tunes those per model; repeating them here causes
+     over-verification and wasted tokens with no gain in quality. Small models still need that scaffolding —
+     it lives under Delegation, as text to paste into their prompts. -->
 
 ## Delegation (subagents)
 
-- Prompts must be self-contained — subagents can't see the conversation: target files + real example patterns + the area's rules
+- Prompts must be self-contained — subagents can't see the conversation: target files + real example patterns + the area's rules (paste the module's gotchas in)
 - **Subagents never commit/push** — the orchestrator reviews the diff and runs validation itself before committing
 - Work smaller than the overhead of handing off context → do it yourself
 - Pick the cheapest/fastest model that can truly do the job: complex/risky → large · clear spec → medium · mechanical → small
+- **Small-model subagents only** — paste this into their prompt; large models don't need it and it makes them over-verify:
+  ```
+  Self-review before returning: Logic · Security · Data · Code quality
+  Report: Summary (what changed + why) · Evidence (file:line) · Risks (none = "none") ·
+          Validation (checks actually run) · Confidence HIGH|MEDIUM|LOW
+  ```
 
 ## Project specifics
 

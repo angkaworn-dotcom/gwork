@@ -14,7 +14,7 @@ One principle: **any rule that can be checked deterministically becomes a hook/s
 | rotten/wrong-shard INDEX links · gotcha too long · BC rows carrying text | tasklog-check | push blocked |
 | absolute prohibitions (`forbidden` patterns in gwork.json) | tasklog-check (check F) | push blocked — a prompt-level order is not an override; only the repo owner is, via gwork.json |
 | read gotchas before touching a module | `hooks/tasklog-gotcha.mjs` (PreToolUse) | auto-injected — the AI never has to remember |
-| Evidence / Confidence gate / Clarify Early / subagents never commit | `CLAUDE.template.md` (prompt) | judgment — can't be automated |
+| Evidence / Clarify Early / design decisions belong to the owner / subagents never commit | `CLAUDE.template.md` (prompt) | judgment — can't be automated |
 
 ## Use as a Claude Code skill
 

@@ -19,7 +19,7 @@ All source files live in this skill folder (`scripts/`, `githooks/`, `hooks/`, `
 | rotten/wrong-shard INDEX links · gotcha too long · BC rows carrying text | tasklog-check | push blocked |
 | absolute prohibitions (`forbidden` patterns in gwork.json) | tasklog-check (check F) | push blocked — only the owner overrides, via gwork.json |
 | read gotchas before touching a module | `hooks/tasklog-gotcha.mjs` (PreToolUse) | auto-injected |
-| Evidence / Confidence gate / Clarify Early / subagents never commit | CLAUDE.md (prompt) | judgment |
+| Evidence / Clarify Early / design decisions belong to the owner / subagents never commit | CLAUDE.md (prompt) | judgment |
 
 ## Install into a target repo
 

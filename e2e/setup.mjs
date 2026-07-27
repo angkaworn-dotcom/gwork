@@ -154,7 +154,9 @@ function build(scenario, n) {
     // ~/.gwork). The harness plays owner: headless init via the CONFIRM hash. Drive the
     // agent with GWORK_HOME pointing here so both hook channels see the snapshot.
     const gworkHome = join(repo, '.gwork-home')
-    const env = { ...process.env, GWORK_HOME: gworkHome }
+    // Blank the agent markers: the owner-init below must work even when this setup script is
+    // itself launched from an agent shell (CLAUDECODE=1), where init refuses by design.
+    const env = { ...process.env, GWORK_HOME: gworkHome, CLAUDECODE: '', CLAUDE_CODE_ENTRYPOINT: '' }
     execSync('node scripts/gwork-sentinel.mjs install', { cwd: repo, env, encoding: 'utf8' })
     const h = execSync('node scripts/gwork-sentinel.mjs hash', { cwd: repo, env, encoding: 'utf8' }).trim()
     execSync('node scripts/gwork-sentinel.mjs init', { cwd: repo, env: { ...env, GWORK_SENTINEL_CONFIRM: h }, encoding: 'utf8' })

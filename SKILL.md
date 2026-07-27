@@ -58,13 +58,15 @@ Let `<SKILL>` = this skill folder, `<REPO>` = the target repo.
    All five events earn their place — a mid-session `/model` switch is the hard case (L-005): `SessionStart` never re-fires, and when `UserPromptSubmit` fires the switch is **not in the transcript yet**, so it is caught from the prompt text (`/model <id>`); `PreToolUse` catches it at the first tool call, since by then the transcript has it; `Stop` closes the last gap — a text-only turn with no tool calls — by injecting before the next turn starts. Add the `PreToolUse` entry alongside the `tasklog-gotcha` one (no `matcher` = every tool) — don't replace it.
    **This layer is prompt, not enforcement** — it aims the prompt better, it doesn't block anything. The gates stay pre-push/commit-msg/tasklog-check.
 6. **CLAUDE.md:** use `CLAUDE.template.md` as the skeleton — fill `<PROJECT_NAME>`, commands, SSOT, then **move long gotchas from the old CLAUDE.md into Known Bug Classes (one line per BC-xxx)**. Keep existing architecture/project specifics; cut only rules the hooks now enforce.
-7. **Sentinel (optional, recommended when an agent runs the repo autonomously):** tamper-detector for the enforcement machinery itself — snapshots the hooks/checker/`core.hooksPath`/guards outside the repo and blocks a push (and denies edits) if any of them drifts from the owner's snapshot. As the **owner**, on a terminal:
+7. **Sentinel (optional, recommended when an agent runs the repo autonomously):** tamper-detector for the enforcement machinery itself — snapshots the hooks/checker/`core.hooksPath`/guards outside the repo and blocks a push (and denies edits) if any of them drifts from the owner's snapshot.
+   Installation splits by trust: the **agent does the mechanics**, the **owner does the attestation** — `init`/`update` refuse from an agent shell (`CLAUDECODE` marker) even with the correct hash, precisely so an agent cannot attest to machinery it just modified.
    ```bash
    cp <SKILL>/scripts/gwork-sentinel.mjs <REPO>/scripts/
-   node <REPO>/scripts/gwork-sentinel.mjs install            # copies to ~/.gwork/bin
-   node <REPO>/scripts/gwork-sentinel.mjs init --repo <REPO>  # interactive y/N snapshot
+   node <REPO>/scripts/gwork-sentinel.mjs install              # copies to ~/.gwork/bin — agent-safe
+   node <REPO>/scripts/gwork-sentinel.mjs init --repo <REPO>   # agent shell → refused + prints the owner one-liner
    ```
-   After any legitimate change to the hooks or `gwork.json` guards, re-run `node scripts/gwork-sentinel.mjs update` (interactive) to re-snapshot. It closes silent machinery tampering (hooksPath removal, neutered checker); it does **not** close `git push --no-verify` — that needs the server side (see ROADMAP).
+   The refusal prints a one-liner (`GWORK_SENTINEL_CONFIRM=<hash> … init`) — hand it to the owner verbatim to paste in **their own terminal**. The hash pins the exact bytes being attested: if anything changes between the agent preparing it and the owner running it, the hash mismatches and the command fails. On a real terminal, plain `init` with y/N works as before.
+   After any legitimate change to the hooks or `gwork.json` guards, the owner re-runs `update` the same way. It closes silent machinery tampering (hooksPath removal, neutered checker); it does **not** close `git push --no-verify` — that needs the server side (see ROADMAP).
 
 ## Verify after install
 

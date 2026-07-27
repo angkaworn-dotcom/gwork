@@ -52,9 +52,17 @@ ok('sentinel-guards-restored', sentinel('verify').status === 0)
 
 // --- sentinel: non-interactive update refused without CONFIRM, accepted with it ---
 sh('git config --unset core.hooksPath', R)
-ok('sentinel-update-refused', sentinel('update').status === 1)
+const owner = { ...env, CLAUDECODE: '', CLAUDE_CODE_ENTRYPOINT: '' } // simulate the owner's own terminal
+ok('sentinel-update-refused', run(['node', 'scripts/gwork-sentinel.mjs', 'update'], R, owner).status === 1)
 const h = sentinel('hash').stdout.trim()
-ok('sentinel-update-confirmed', run(['node', 'scripts/gwork-sentinel.mjs', 'update'], R, { ...env, GWORK_SENTINEL_CONFIRM: h }).status === 0)
+
+// --- sentinel: an AGENT shell is refused even with the correct hash — attestation is the owner's ---
+const agentTry = run(['node', 'scripts/gwork-sentinel.mjs', 'update'], R, { ...env, CLAUDECODE: '1', GWORK_SENTINEL_CONFIRM: h })
+ok('sentinel-agent-refused-despite-hash', agentTry.status === 1 && /agent shell/.test(agentTry.stderr))
+ok('sentinel-agent-prints-owner-oneliner', new RegExp(h).test(agentTry.stderr))
+ok('sentinel-agent-refusal-journaled', /"action":"refused"/.test(sentinel('journal').stdout))
+
+ok('sentinel-update-confirmed', run(['node', 'scripts/gwork-sentinel.mjs', 'update'], R, { ...owner, GWORK_SENTINEL_CONFIRM: h }).status === 0)
 ok('sentinel-verify-after-update', sentinel('verify').status === 0)
 ok('sentinel-journal-chained', (sentinel('journal').stdout.match(/"action"/g) || []).length >= 2)
 sh('git config core.hooksPath githooks', R) // restore for later git ops (snapshot now expects MISSING — fine, isolated below)

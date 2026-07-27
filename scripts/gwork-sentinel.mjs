@@ -21,7 +21,9 @@
  *
  * Commands (run from the repo root, or pass --repo <path>):
  *   init | update   snapshot current state (asks y/N on a TTY; headless needs
- *                   GWORK_SENTINEL_CONFIRM=<stateHash> — journaled as non-interactive)
+ *                   GWORK_SENTINEL_CONFIRM=<stateHash> — journaled as non-interactive).
+ *                   Refused outright from an agent shell (CLAUDECODE etc.) even with the
+ *                   hash — an agent installs, the OWNER attests via the printed one-liner.
  *   verify [--json] exit 0 ok / no snapshot · 2 machinery tampered · 3 guards changed
  *   hash            print the current stateHash (what CONFIRM must equal)
  *   install         copy this script to <home>/bin/ and run init
@@ -88,9 +90,29 @@ function journalAppend(entry) {
 
 async function confirmUpdate(cur, oldSnap) {
   const h = stateHash(cur)
+  const action = oldSnap ? 'update' : 'init'
+  // Attestation belongs to the owner. Agent shells carry harness markers (Claude Code sets
+  // CLAUDECODE=1 in every command it runs), so from inside one, init/update refuse even with
+  // the correct CONFIRM hash — otherwise the agent could attest to machinery it just tampered
+  // with. This is what makes the split possible: an agent performs the whole install
+  // mechanically, then hands the owner a one-liner whose hash binds to the exact bytes being
+  // attested — anything changes in between, the hash mismatches and the command fails.
+  // An agent that unsets the marker to get past this is journaled sabotage, not a loophole
+  // (same honesty contract as the header). The refusal itself is journaled below.
+  const agentMarker = ['CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT'].find(k => process.env[k])
+  if (agentMarker) {
+    journalAppend({ at: new Date().toISOString(), action: 'refused', reason: `agent-env:${agentMarker}`, wanted: action, hash: h })
+    const oneLiner = process.platform === 'win32'
+      ? `$env:GWORK_SENTINEL_CONFIRM='${h}'; node "${join(HOME, 'bin', 'gwork-sentinel.mjs')}" ${action} --repo "${REPO}"`
+      : `GWORK_SENTINEL_CONFIRM=${h} node "${join(HOME, 'bin', 'gwork-sentinel.mjs')}" ${action} --repo "${REPO}"`
+    console.error(`sentinel: refusing ${action} from an agent shell (${agentMarker} is set) — attestation belongs to the owner.`)
+    console.error(`  Owner: review the state, then run this in YOUR OWN terminal (the hash pins today's exact bytes):`)
+    console.error(`  ${oneLiner}`)
+    return { ok: false }
+  }
   if (process.env.GWORK_SENTINEL_CONFIRM === h) return { ok: true, interactive: false }
   if (!process.stdin.isTTY) {
-    console.error(`sentinel: refusing non-interactive ${oldSnap ? 'update' : 'init'} — a human must confirm on a terminal.`)
+    console.error(`sentinel: refusing non-interactive ${action} — a human must confirm on a terminal.`)
     console.error(`  Headless override (journaled as non-interactive): GWORK_SENTINEL_CONFIRM=${h}`)
     return { ok: false }
   }

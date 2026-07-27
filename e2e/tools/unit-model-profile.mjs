@@ -97,6 +97,13 @@ writeFileSync(t14, '{"type":"assis' + '\n' + JSON.stringify(assistant('claude-op
 const r14 = run({ hook_event_name: 'UserPromptSubmit', session_id: sid(), cwd: work, transcript_path: t14 })
 check('unparseable line is skipped, scan continues', /verification layer/.test(r14.ctx), r14.out.slice(0, 200))
 
+// /clear wipes the context but not the state file — SessionStart(source:clear) must reset it
+const sClear = sid()
+run({ hook_event_name: 'UserPromptSubmit', session_id: sClear, cwd: work, transcript_path: t1 })
+run({ hook_event_name: 'SessionStart', session_id: sClear, cwd: work, source: 'clear' }) // no model field, like a real clear
+const rClear = run({ hook_event_name: 'UserPromptSubmit', session_id: sClear, cwd: work, transcript_path: t1 })
+check('after /clear the profile is re-injected', /verification layer/.test(rClear.ctx), rClear.out.slice(0, 200))
+
 // --- per-repo opt-out ---
 const optOut = join(work, 'optout')
 mkdirSync(optOut, { recursive: true })

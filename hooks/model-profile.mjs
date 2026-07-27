@@ -21,7 +21,7 @@
  * must never block a prompt. Unknown model = inject nothing (never guess a profile —
  * pushing small-model scaffolding into a new large model is worse than staying silent).
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync, openSync, readSync, closeSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync, openSync, readSync, closeSync, rmSync } from 'node:fs'
 import { join, dirname, isAbsolute } from 'node:path'
 import { tmpdir, homedir } from 'node:os'
 
@@ -35,6 +35,14 @@ try { data = JSON.parse(input) } catch { process.exit(0) }
 const event = data?.hook_event_name ?? ''
 const shape = EVENT[event]
 if (!shape) process.exit(0)
+
+// /clear and compaction wipe the context but not our state file — without this reset the
+// profile would never be re-injected even though the model no longer sees it. SessionStart
+// re-fires on both and carries `source`, so that's where the state is dropped.
+const stateDirEarly = join(tmpdir(), 'gwork-model-profile')
+if (event === 'SessionStart' && ['clear', 'compact'].includes(data?.source)) {
+  try { rmSync(join(stateDirEarly, `${data?.session_id ?? 'nosession'}.json`), { force: true }) } catch { /* fail-open */ }
+}
 
 const emit = (text) => {
   if (text) {

@@ -4,6 +4,15 @@ Append-only, newest first. Every entry = a bug the kit hit in a real repo, fixed
 
 Format: `## L-xxx — <one-line symptom>` · date · repo · Root cause · Fix · Harness.
 
+## L-017 — one model switch, three profile blocks, the first one naming the wrong model
+
+- **Date:** 2026-11-11 · **Repo:** a live Claude Code session (2.1.318, desktop) whose model was switched from another session
+- **Symptom:** after a switch from Fable to Sonnet the session received three `[gwork] Running on …` blocks: from `UserPromptSubmit`, naming **Fable** and saying the Sonnet profile no longer applied; from `PostModelSwitch`, naming Sonnet (correct); from the first `PreToolUse`, naming Sonnet again.
+- **Root cause:** `PostModelSwitch` recorded the new model, then `UserPromptSubmit` read the transcript tail — documented as lagging, and still holding the old model — took the disagreement for a switch back, and announced the old model. Once the transcript caught up, the next event "switched" forward again. L-005 had met the same lag from the other side and layered three events on it; the events then fought each other.
+- **Fix:** the state records where the model came from. Once `PostModelSwitch` has named it, a transcript that disagrees is ignored as stale; a harness that sends that event sends it for every change, so nothing is lost. Older builds, which never send it, keep believing the transcript. `/clear` and compaction forget the authority with the rest of the state.
+- **Harness:** `node e2e/tools/unit-model-profile.mjs` green twice, with both event orders and a switch back; three of those cases fail on the old hook, reproducing the three blocks. Confirmed live: after the fix, switching back produced exactly one block, from `PostModelSwitch`, and the state read `{"model":"fable-5-2","injected":true,"source":"switch"}`.
+- **How it was found:** the owner did not have to type `/model` — a second session was started to test, and its model was switched from the first.
+
 ## L-016 — first session started with every hook in place: a shell write from outside the repo was never looked at
 
 - **Date:** 2026-11-11 · **Repo:** an e2e sandbox, driven from a real Claude Code session (2.1.318, desktop) whose working directory was the kit, not the sandbox

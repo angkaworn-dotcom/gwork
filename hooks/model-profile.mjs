@@ -143,10 +143,13 @@ const promptSwitch = event === 'UserPromptSubmit' && typeof data?.prompt === 'st
   ? data.prompt.match(/^\s*\/model\s+(?:set\s+)?([\w.-]+)(?:\[\w+\])?\s*$/)?.[1]
   : null
 
-const raw = (event === 'PostModelSwitch' && typeof data?.to_model === 'string' && data.to_model)
-  || promptSwitch
-  || (event === 'SessionStart' && typeof data?.model === 'string' && data.model)
-  || modelFromTranscript(data?.transcript_path)
+// Where the answer comes from matters as much as the answer: `switch` is the harness telling us
+// (PostModelSwitch), `prompt` and `start` are stated outright, `transcript` is inferred from a
+// file the harness documents as lagging behind.
+const fromSwitch = event === 'PostModelSwitch' && typeof data?.to_model === 'string' && data.to_model
+const fromStart = event === 'SessionStart' && typeof data?.model === 'string' && data.model
+const raw = fromSwitch || promptSwitch || fromStart || modelFromTranscript(data?.transcript_path)
+const source = fromSwitch ? 'switch' : promptSwitch ? 'prompt' : fromStart ? 'start' : 'transcript'
 if (!raw) process.exit(0) // fresh session, nothing has run yet — the next prompt resolves it
 
 // claude-haiku-4-5-20251001 → haiku-4-5 · claude-opus-5 → opus-5 · "Sonnet 5.5" → sonnet-5-5
@@ -165,12 +168,18 @@ if (state === null || typeof state !== 'object') state = {}
 // session (a file added, the kit updated) was then never injected — seen live: the state said
 // {"model":"fable-5-2"} and the session ran its whole length with no profile.
 if (state.model === key && state.injected === true) process.exit(0)
+// Once PostModelSwitch has named the model, a transcript that disagrees is stale, not news.
+// Seen live: right after a switch to sonnet, UserPromptSubmit read the transcript tail (still
+// the old model), announced the OLD model as running and told the session the new profile no
+// longer applied; the next tool call then put the right one back — three blocks for one switch.
+// A harness that sends PostModelSwitch sends it for every later change too, so nothing is lost.
+if (source === 'transcript' && state.source === 'switch' && state.model !== key) process.exit(0)
 
 // exact id first, then the family: claude-fable-5-2 → fable-5-2.md → fable-5.md. Without the
 // fallback every minor release silently switches the whole layer off until someone adds a file.
 const profile = readProfile(key) ?? readProfile(key.replace(/-\d+$/, '')) // still no file → stay silent rather than guess
 const previous = state.injected === true ? state.model : undefined // only a profile that was shown can be superseded
-try { mkdirSync(stateDir, { recursive: true }); writeFileSync(stateFile, JSON.stringify({ model: key, injected: Boolean(profile) })) } catch { /* re-inject next prompt at worst */ }
+try { mkdirSync(stateDir, { recursive: true }); writeFileSync(stateFile, JSON.stringify({ model: key, injected: Boolean(profile), source: state.source === 'switch' && state.model === key ? 'switch' : source })) } catch { /* re-inject next prompt at worst */ }
 if (!profile) process.exit(0)
 
 // After a switch the previous model's profile is still sitting in the context window, and the two

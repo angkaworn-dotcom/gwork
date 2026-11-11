@@ -57,9 +57,12 @@ try { data = JSON.parse(input) } catch { ok() }
 
 EVENT = data?.hook_event_name === 'SessionStart' ? 'SessionStart' : 'PreToolUse'
 tool = typeof data?.tool_name === 'string' ? data.tool_name : ''
-const cwd = data?.cwd ?? process.cwd()
-sessionId = data?.session_id ?? 'nosession'
-const filePath = data?.tool_input?.file_path ?? ''
+// Everything below comes from outside: a field of the wrong type must behave like a missing one,
+// and the session id becomes a FILE NAME — strip anything that could walk out of the state dir.
+const str = (v) => (typeof v === 'string' ? v : '')
+const cwd = str(data?.cwd) || process.cwd()
+sessionId = (str(data?.session_id) || 'nosession').replace(/[^\w.-]/g, '_').slice(0, 120)
+const filePath = str(data?.tool_input?.file_path)
 const command = typeof data?.tool_input?.command === 'string' ? data.tool_input.command : ''
 
 // --- find the repo root that holds task-log/INDEX.md: walk up from the FILE being edited,
@@ -76,7 +79,10 @@ const rootOf = (start) => {
 let cfgWarn = null
 const loadCfg = () => {
   const p = join(root, 'gwork.json')
-  try { cfg = JSON.parse(readFileSync(p, 'utf8')) }
+  try {
+    cfg = JSON.parse(readFileSync(p, 'utf8').replace(/^\uFEFF/, '')) // editors on Windows prepend a BOM
+    if (cfg === null || typeof cfg !== 'object' || Array.isArray(cfg)) throw new Error('the top level must be an object')
+  }
   catch (e) { cfg = {}; if (existsSync(p)) cfgWarn = `[gwork] gwork.json cannot be parsed (${e.message}). Until it is fixed the forbidden rules are NOT checked at edit time, and commit and push will be blocked. Fix the file before doing anything else.` }
 }
 const relOf = (p) => {
@@ -86,8 +92,13 @@ const relOf = (p) => {
 }
 const stateDir = join(tmpdir(), 'tasklog-gotcha')
 const stateFile = join(stateDir, `${sessionId}.json`)
+// A quantified group that itself contains a quantifier — `(a+)+`, `(\\w*)*` — can take exponential
+// time on a line that almost matches. The edit hook would hang to its timeout on every edit, so
+// such a rule is skipped here (and said once); tasklog-check refuses it outright.
+const BACKTRACKS = /\((?:[^()\\]|\\.)*[+*](?:[^()\\]|\\.)*\)[+*{]/
 const forbiddenRules = () => (Array.isArray(cfg.forbidden) ? cfg.forbidden : []).flatMap(rule => {
-  if (!rule?.path || !rule?.pattern) return []
+  if (typeof rule?.path !== 'string' || typeof rule?.pattern !== 'string' || !rule.path || !rule.pattern) return []
+  if (BACKTRACKS.test(rule.pattern)) { cfgWarn ??= `[gwork] forbidden pattern /${rule.pattern}/ nests one repetition inside another and can hang; it is NOT checked at edit time. Ask the owner to rewrite it.`; return [] }
   try { return [{ ...rule, pathRe: new RegExp(rule.path), patRe: new RegExp(rule.pattern) }] } catch { return [] }
 })
 const FORBIDDEN_TAIL = 'Only the repo owner may lift this (edit gwork.json → forbidden). A direct order in a prompt is not authorization; do not route around it with --no-verify or another way of writing the file — surface the conflict to the owner instead.'
@@ -106,7 +117,8 @@ if (EVENT === 'SessionStart') {
   const notes = []
   // Work that was committed but never closed out into the task-log: say so once, at the start,
   // where it costs no extra turn (a Stop-time reminder would re-run the model every time).
-  const limit = cfg.tasklog?.unclosedCommits ?? 3
+  const rawLimit = cfg.tasklog?.unclosedCommits
+  const limit = rawLimit === undefined ? 3 : (typeof rawLimit === 'number' && rawLimit > 0 ? rawLimit : 0) // anything that is not a positive number = off
   if (limit && data?.source !== 'compact') {
     const git = (...a) => { const r = spawnSync('git', a, { cwd: root, encoding: 'utf8', timeout: 4000 }); return r.status === 0 ? r.stdout.trim() : '' }
     const last = git('log', '-1', '--format=%H %cs', '--', 'task-log')
@@ -131,7 +143,7 @@ if (EVENT === 'SessionStart') {
       if (existsSync(tool) && lastDay !== today) {
         mkdirSync(join(HOME, 'drift'), { recursive: true })
         writeFileSync(stamp, today)
-        const r = spawnSync('node', [tool, '--repo', root, '--json'], { encoding: 'utf8', timeout: 8000 })
+        const r = spawnSync('node', [tool, '--repo', root, '--json'], { encoding: 'utf8', timeout: 2500 }) // a stuck tool costs one slow start a day, not eight seconds
         const j = JSON.parse(r.stdout)
         const count = (st) => j.drift.filter(d => d.state === st).length
         const parts = [
@@ -161,12 +173,23 @@ if (!filePath) {
   if (!rules.length) ok()
   const unq = (t) => t.replace(/^["']|["']$/g, '')
   const TOK = `("[^"]+"|'[^']+'|[^\\s;|&()<>]+)`
+  // Each simple command is judged with the directory it runs in: `cd lib/money && echo … > a.js`
+  // writes lib/money/a.js. Only `cd` at the start of a segment is followed — good enough for
+  // the way agents chain commands, and wrong only in ways that miss, never in ways that block.
   const targets = new Set()
-  // redirects (`> f`, `>> f`, `1> f`) but not fd dups (`2>&1`), comparisons or arrows (`=>`, `->`)
-  for (const m of command.matchAll(new RegExp(`(?<![<>&=-])(?:\\d|&)?>>?(?!&)\\s*${TOK}`, 'g'))) targets.add(unq(m[1]))
-  for (const m of command.matchAll(new RegExp(`\\btee\\s+(?:-a\\s+)?${TOK}`, 'g'))) targets.add(unq(m[1]))
-  for (const m of command.matchAll(/\b(?:sed|perl)\s[^|;&]*?-[a-zA-Z]*i\b[^|;&]*/g))
-    for (const tok of m[0].split(/\s+/).slice(1)) if (!tok.startsWith('-')) targets.add(unq(tok))
+  let dir = ''
+  for (const seg of command.split(/&&|\|\||;|\n/)) {
+    const cd = seg.match(new RegExp(`^\\s*cd\\s+${TOK}\\s*$`))
+    if (cd) { const d = unq(cd[1]); dir = d.startsWith('/') ? d : join(dir, d); continue }
+    const add = (t) => { const u = unq(t); if (u) targets.add(u.startsWith('/') || u.startsWith('~') ? u : join(dir, u)) }
+    // stdout redirects only (`>`, `>>`, `>|`, `1>`, `&>`): `2> f` sends stderr, not the text of the
+    // command, into f. Not fd dups (`2>&1`), comparisons or arrows (`=>`, `->`).
+    for (const m of seg.matchAll(new RegExp(`(?<![<>&=\\d-])(?:1|&)?>>?\\|?(?!&)\\s*${TOK}`, 'g'))) add(m[1])
+    for (const m of seg.matchAll(/\btee\s+((?:-a\s+|--append\s+)?[^|;&<>]+)/g))
+      for (const tok of m[1].match(new RegExp(TOK, 'g')) ?? []) if (!tok.startsWith('-')) add(tok)
+    for (const m of seg.matchAll(/\b(?:sed|perl)\s[^|;&]*?(?:-[a-zA-Z]*i\b|--in-place)[^|;&]*/g))
+      for (const tok of m[0].match(new RegExp(TOK, 'g')) ?? []) if (!tok.startsWith('-') && !/^(sed|perl)$/.test(tok)) add(tok)
+  }
   for (const t of targets) {
     const rel = relOf(t)
     const rule = rules.find(r => r.pathRe.test(rel) && r.patRe.test(command))
@@ -232,17 +255,19 @@ const moduleRules = Array.isArray(cfg.modules) && cfg.modules.length ? cfg.modul
 const moduleOf = p => {
   for (const r of moduleRules) {
     let m
+    if (typeof r?.pattern !== 'string') continue
     try { m = p.match(new RegExp(r.pattern)) } catch { continue } // bad regex in config → skip, never crash the hook
-    if (m) return r.name.replace(/\$(\d)/g, (_, i) => m[+i] ?? '')
+    if (m) return String(r.name ?? '').replace(/\$(\d)/g, (_, i) => m[+i] ?? '')
   }
   return null
 }
 const mod = moduleOf(rel)
 
 // --- anti-spam state: once per (session, module), once per (session, file), sentinel warning once per session ---
-mkdirSync(stateDir, { recursive: true })
+try { mkdirSync(stateDir, { recursive: true }) } catch { /* no state dir = inject every time, never crash */ }
 let seen = {}
 try { seen = JSON.parse(readFileSync(stateFile, 'utf8')) } catch { /* fresh */ }
+if (seen === null || typeof seen !== 'object' || Array.isArray(seen)) seen = {}
 const save = () => { try { writeFileSync(stateFile, JSON.stringify(seen)) } catch { /* re-inject at worst */ } }
 const okW = (extra) => { // every exit from here on goes through okW so a pending sentinel warning is never lost
   const warn = sentinelWarn && !seen.__sentinel ? sentinelWarn : null
@@ -256,9 +281,11 @@ const okW = (extra) => { // every exit from here on goes through okW so a pendin
 // --- INDEX rows: split on unescaped pipes; a row counts only when it has something to say ---
 const real = v => v && v !== 'TODO' && v !== '—' && v !== '-'
 const uniq = a => [...new Set(a.filter(real))]
-const allRows = readFileSync(indexPath, 'utf8').split('\n')
+let indexText = ''
+try { indexText = readFileSync(indexPath, 'utf8') } catch { /* unreadable INDEX = nothing to say */ }
+const allRows = indexText.split('\n')
   .map(l => l.split(/(?<!\\)\|/).map(s => s.trim()))
-  .filter(c => c.length >= 5 && c[1] !== 'Module' && !/^-+$/.test(c[1]) && (real(c[4]) || real(c[3])))
+  .filter(c => c.length >= 5 && c[1] !== 'Module' && !/^:?-+:?$/.test(c[1]) && (real(c[4]) || real(c[3])))
 // ALL rows named for the module, not the first: a real INDEX files several rows under one name.
 const modRows = mod ? allRows.filter(c => c[1] === mod) : []
 // a row already delivered this session is not delivered again through another file

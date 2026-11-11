@@ -21,7 +21,7 @@
  *   - attest the sentinel (the owner's act, never an agent's)
  * GWORK_CLAUDE_HOME overrides ~/.claude (tests, sandboxes).
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, chmodSync, readdirSync, statSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, chmodSync, readdirSync, statSync, realpathSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import { spawnSync } from 'node:child_process'
@@ -37,7 +37,12 @@ const CLAUDE = process.env.GWORK_CLAUDE_HOME ?? join(homedir(), '.claude')
 const DRY = has('dry-run'), FORCE = has('force'), MACHINE_ONLY = has('machine-only'), MACHINE = has('machine') || MACHINE_ONLY
 
 const done = [], skipped = [], todo = []
-const act = (what, fn) => { done.push(what); if (!DRY) fn() }
+// a step that cannot be done (read-only directory, a file where a directory should be) stops the
+// install with the reason, not a stack trace
+const act = (what, fn) => {
+  if (!DRY) { try { fn() } catch (e) { console.error(`gwork-install: could not ${what} — ${e.message}`); process.exit(1) } }
+  done.push(what)
+}
 
 // which existing copies were edited in place — the drift detector already knows
 const driftRun = spawnSync('node', [join(KIT, 'scripts', 'gwork-drift.mjs'), '--repo', REPO, '--json'], { encoding: 'utf8', env: process.env })
@@ -71,6 +76,11 @@ const place = (group, kitRel, dest, { exec = false } = {}) => {
 if (!MACHINE_ONLY) {
 if (resolve(REPO) === KIT) { console.error('gwork-install: --repo is the kit itself — point it at the repo to install into'); process.exit(1) }
 if (git(REPO, 'rev-parse', '--git-dir') === null) { console.error(`gwork-install: ${REPO} is not a git repository`); process.exit(1) }
+if (git(REPO, 'rev-parse', '--is-inside-work-tree')?.trim() !== 'true') { console.error(`gwork-install: ${REPO} has no working tree (a bare repository?) — install into a checkout`); process.exit(1) }
+// core.hooksPath is resolved from the top of the working tree: hooks copied into a subdirectory would never run
+const real = (p) => { try { return realpathSync(p) } catch { return p } }
+const top = git(REPO, 'rev-parse', '--show-toplevel')?.trim()
+if (top && real(top) !== real(REPO)) { console.error(`gwork-install: ${REPO} is inside the repository at ${top}, not its top — pass --repo "${top}"`); process.exit(1) }
 const hooksPath = git(REPO, 'config', 'core.hooksPath')?.trim() ?? ''
 if (hooksPath && !/(^|[\\/])githooks$/.test(hooksPath) && !FORCE) {
   console.error(`gwork-install: core.hooksPath is already "${hooksPath}". gwork needs it to be "githooks"; replacing it would switch off the hooks that are there. Move them into githooks/ first, or pass --force.`)
@@ -118,12 +128,16 @@ if (MACHINE) {
     try { settings = JSON.parse(readFileSync(settingsPath, 'utf8')) }
     catch (e) { console.error(`gwork-install: ${settingsPath} is not valid JSON (${e.message}) — fix it first; nothing was registered`); process.exit(1) }
   }
+  // the file is the user's: anything other than the documented shape is theirs to fix, not ours to guess at
+  const plain = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
+  if (!plain(settings)) { console.error(`gwork-install: ${settingsPath} is not a JSON object — nothing was registered`); process.exit(1) }
   settings.hooks ??= {}
+  if (!plain(settings.hooks) || Object.values(settings.hooks).some(v => !Array.isArray(v))) { console.error(`gwork-install: "hooks" in ${settingsPath} is not {event: [entries]} — fix it first; nothing was registered`); process.exit(1) }
   const fwd = (p) => p.replace(/\\/g, '/')
   let changed = false
   const register = (event, file, { matcher, timeout }) => {
     const list = (settings.hooks[event] ??= [])
-    const mine = list.find(e => (e.hooks ?? []).some(h => typeof h.command === 'string' && h.command.includes(file)))
+    const mine = list.find(e => Array.isArray(e?.hooks) && e.hooks.some(h => typeof h?.command === 'string' && h.command.includes(file)))
     if (!mine) {
       list.push({ ...(matcher ? { matcher } : {}), hooks: [{ type: 'command', command: `node "${fwd(join(CLAUDE, 'hooks', file))}"`, timeout }] })
       changed = true; done.push(`settings.json: register ${file} on ${event}${matcher ? ` (${matcher})` : ''}`)

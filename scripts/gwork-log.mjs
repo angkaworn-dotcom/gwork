@@ -25,7 +25,9 @@ try { cfg = loadConfig(root) } catch (e) { console.error(`gwork-log: cannot pars
 const moduleOf = moduleMapper(cfg)
 
 // --- what happened since the last entry ---
-const since = opt('since') ?? git(root, 'log', '-1', '--format=%H', '--', 'task-log')?.trim() ?? ''
+const sinceArg = opt('since')
+if (sinceArg !== undefined && git(root, 'rev-parse', '--verify', '--quiet', `${sinceArg}^{commit}`) === null) { console.error(`gwork-log: --since "${sinceArg}" is not a commit in this repo`); process.exit(1) }
+const since = sinceArg ?? git(root, 'log', '-1', '--format=%H', '--', 'task-log')?.trim() ?? ''
 const range = since ? [`${since}..HEAD`] : ['HEAD']
 const commits = lines(git(root, 'log', '--reverse', '--format=%h %s', ...range, '--', '.', ':!task-log'))
 const changed = new Set([
@@ -57,7 +59,8 @@ const plan = modules.map(mod => {
   return { mod, at }
 })
 
-const title = opt('title') ?? 'TODO: short title'
+// the title becomes one markdown header line
+const title = (opt('title') ?? 'TODO: short title').replace(/\s*[\r\n]+\s*/g, ' ').trim() || 'TODO: short title'
 const entry = [
   `<a id="${id}"></a>`,
   `## ${date} — ${title}`,
@@ -89,7 +92,7 @@ for (const { mod, at } of plan) {
     indexLines[at] = p.join('|')
   } else {
     while (indexLines.length && indexLines[indexLines.length - 1] === '') indexLines.pop()
-    indexLines.push(`| ${mod} | ${link} | — | — |`, '')
+    indexLines.push(`| ${mod.replace(/(?<!\\)\|/g, '\\|')} | ${link} | — | — |`, '')
   }
 }
 writeFileSync(indexPath, indexLines.join('\n'))

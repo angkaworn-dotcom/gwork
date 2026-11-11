@@ -25,16 +25,27 @@ import { execFileSync } from 'node:child_process'
 
 const dirArg = process.argv.indexOf('--dir')
 const DIR = dirArg > -1 ? process.argv[dirArg + 1] : 'task-log'
+if (!DIR || DIR.startsWith('--')) { console.error('tasklog-check: --dir needs a directory name'); process.exit(1) }
 const STAGED = process.argv.includes('--staged')
 // Thresholds configurable via gwork.json → tasklog.maxGotcha / tasklog.bcGotchaMax
 // No file = defaults · file present but unparseable = fail loud (broken config must never be silent)
 let cfg = {}
 if (existsSync('gwork.json')) {
-  try { cfg = JSON.parse(readFileSync('gwork.json', 'utf8')) }
+  try {
+    cfg = JSON.parse(readFileSync('gwork.json', 'utf8').replace(/^\uFEFF/, '')) // editors on Windows prepend a BOM
+    if (cfg === null || typeof cfg !== 'object' || Array.isArray(cfg)) throw new Error('the top level must be an object')
+  }
   catch (e) { console.error(`tasklog-check: cannot parse gwork.json — ${e.message}`); process.exit(1) }
 }
-const MAX_GOTCHA = cfg.tasklog?.maxGotcha ?? 140
-const BC_GOTCHA_MAX = cfg.tasklog?.bcGotchaMax ?? 80
+// a limit that is not a number would compare as "never too long" and switch the check off quietly
+const limit = (key, dflt) => {
+  const v = cfg.tasklog?.[key]
+  if (v === undefined) return dflt
+  if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) { console.error(`tasklog-check: gwork.json → tasklog.${key} must be a non-negative number`); process.exit(1) }
+  return v
+}
+const MAX_GOTCHA = limit('maxGotcha', 140)
+const BC_GOTCHA_MAX = limit('bcGotchaMax', 80)
 const errors = []
 // split table rows on unescaped pipes only — `\|` inside a gotcha must not cut the cell short (and hide its length from C/D)
 const cells = line => line.split(/(?<!\\)\|/).map(s => s.trim())
@@ -48,6 +59,8 @@ const shardAnchors = new Map() // id → shard file
 for (const f of (existsSync(DIR) ? readdirSync(DIR) : []).filter(f => /^\d{4}-\d{2}\.md$/.test(f))) {
   const text = readFileSync(join(DIR, f), 'utf8')
   for (const m of text.matchAll(/<a id="([^"]+)"><\/a>/g)) {
+    // one id, one entry: a second definition makes every link to it ambiguous
+    if (shardAnchors.has(m[1])) errors.push(`B anchor #${m[1]} is defined twice (${shardAnchors.get(m[1])}${shardAnchors.get(m[1]) === f ? '' : ' and ' + f}) — give the later entry its own id`)
     shardAnchors.set(m[1], f)
   }
 }
@@ -57,7 +70,7 @@ const index = existsSync(join(DIR, 'INDEX.md')) ? readFileSync(join(DIR, 'INDEX.
 const referenced = new Set()
 for (const line of index.split('\n')) {
   const c = cells(line)
-  if (c.length < 5 || c[1] === 'Module' || /^-+$/.test(c[1])) continue
+  if (c.length < 5 || c[1] === 'Module' || /^:?-+:?$/.test(c[1])) continue
   const [, mod, entries, bc, gotcha] = c
 
   // B: every link must point to a real anchor in the right shard
@@ -125,6 +138,10 @@ if (forbiddenRules.length) {
     }
     // anyLine: the same pattern with the m flag, tried once on the whole file. It matches whenever
     // some line matches, so a miss skips the line-by-line pass (a small saving: reading the files is the real cost)
+    if (typeof rule.path !== 'string' || typeof rule.pattern !== 'string') { console.error(`tasklog-check: forbidden[${i}] path and pattern must be strings`); process.exit(1) }
+    // a repetition nested inside another — `(a+)+` — can take exponential time on a near miss and
+    // hang the push; the edit hook skips such a rule, so refuse it here where the owner will see it
+    if (/\((?:[^()\\]|\\.)*[+*](?:[^()\\]|\\.)*\)[+*{]/.test(rule.pattern)) { console.error(`tasklog-check: forbidden[${i}] /${rule.pattern}/ nests one repetition inside another and can hang — rewrite it without the inner or the outer quantifier`); process.exit(1) }
     try { return { rule, pathRe: new RegExp(rule.path), patRe: new RegExp(rule.pattern), anyLine: new RegExp(rule.pattern, 'm') } }
     catch (e) { console.error(`tasklog-check: forbidden[${i}] has a bad regex — ${e.message}`); process.exit(1) }
   })
@@ -223,7 +240,7 @@ if (base) {
     const map = new Map()
     for (const line of (text ?? '').split('\n')) {
       const c = cells(line)
-      if (c.length < 5 || c[1] === 'Module' || /^-+$/.test(c[1])) continue
+      if (c.length < 5 || c[1] === 'Module' || /^:?-+:?$/.test(c[1])) continue
       map.set(c[1], { bc: c[3], gotcha: c[4] })
     }
     return map
@@ -278,13 +295,14 @@ function reachabilityNote() {
   const produced = new Set()
   for (const f of (files ?? '').split('\n')) for (const r of rules ?? []) {
     let m
+    if (typeof r?.pattern !== 'string') continue
     try { m = f.match(new RegExp(r.pattern)) } catch { continue }
     if (m) { produced.add(String(r.name).replace(/\$(\d)/g, (_, i) => m[+i] ?? '')); break }
   }
   const names = new Set()
   for (const line of index.split('\n')) {
     const c = cells(line)
-    if (c.length < 5 || c[1] === 'Module' || /^-+$/.test(c[1]) || c[1] === 'misc' || c[1] === 'other') continue
+    if (c.length < 5 || c[1] === 'Module' || /^:?-+:?$/.test(c[1]) || c[1] === 'misc' || c[1] === 'other') continue
     names.add(c[1])
   }
   const dead = files ? [...names].filter(n => !produced.has(n)) : []
@@ -297,7 +315,7 @@ function reachabilityNote() {
   const perMod = new Map()
   for (const line of index.split('\n')) {
     const c = cells(line)
-    if (c.length < 5 || c[1] === 'Module' || /^-+$/.test(c[1])) continue
+    if (c.length < 5 || c[1] === 'Module' || /^:?-+:?$/.test(c[1])) continue
     const m = perMod.get(c[1]) ?? { tris: [], bc: false }
     if (c[4] && c[4] !== 'TODO' && c[4] !== '—' && c[4] !== '-' && c[4].length >= 12) m.tris.push(tri(c[4]))
     if (c[3] && c[3] !== '—') m.bc = true

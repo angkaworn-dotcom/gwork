@@ -4,6 +4,20 @@ Append-only, newest first. Every entry = a bug the kit hit in a real repo, fixed
 
 Format: `## L-xxx — <one-line symptom>` · date · repo · Root cause · Fix · Harness.
 
+## L-014 — 65 of 336 odd cases failed: the kit had only ever been tested with input it expected
+
+- **Date:** 2026-11-11 · **Repo:** gwork itself (edge-case pass, `e2e/tools/unit-edge.mjs`)
+- **Symptom:** none in the field. A suite of inputs nobody writes on purpose — wrong types, hostile ids, exotic configs and repos, ten ways of writing a file from a shell — was run against `main`: 65 cases failed.
+- **What they were, by weight:**
+  - **A gate switched off quietly.** `gwork.json` holding `null` or an array crashed the checker with a stack trace instead of "cannot parse". A non-numeric `maxGotcha` compared as "never too long". A commit subject of `-n feat: x` was accepted, because `echo` ate the `-n`. A configured commit type was used as a regular expression (`feat+` accepted `featt`). The same anchor id defined in two shards went unreported.
+  - **A write outside its box.** The session id is used as a file name for hook state; `../x` wrote outside the state directory. A model id was used as a profile file name the same way.
+  - **Wrong verdicts on shell writes.** `2> lib/money/err.log` was denied although only stderr goes there (a false block). `tee a b`, `sed --in-place`, `>|`, and `cd lib/money && echo … > a.js` were not seen (false passes).
+  - **Installer.** `"hooks": []` in settings.json made the registration vanish without a word. Pointing `--repo` at a subdirectory installed hooks git would never run. A read-only directory ended in a stack trace.
+  - **Things that looked like data and were not.** A markdown alignment row (`|:---|`) was counted as a module. A kit copied into another repository answered drift questions with that repository's history. A `forbidden` pattern with nested repetition could hang every edit; it is now refused by the checker and skipped, out loud, by the hook.
+- **Fix:** each of the above, plus a BOM in `gwork.json`, an 8-second stall at session start when the drift tool hangs (now 2.5 s), a reminder threshold of `-1` meaning "always", and a damaged log line crashing `gwork-stats`.
+- **The other half of the suite — simulation.** `SessionStart`, a `Bash` call and `PostModelSwitch` could not be driven from the live session, so every hook reply in the suite is held to the harness's documented contract instead: exit 0, no stderr, stdout empty or one JSON object, context only inside `hookSpecificOutput` under the right event name, never `allow`, never over 10,000 characters, inside a time limit.
+- **Harness:** `node e2e/tools/unit-edge.mjs` 336/336, twice in a row; `unit.mjs` 114/114. **Still a simulation:** the contract is what the documentation says the harness accepts, not an observation of the harness accepting it.
+
 ## L-013 — first live check: the hooks work in a real session, and a profile was never delivered because the state said it had been
 
 - **Date:** 2026-11-11 · **Repo:** an e2e sandbox, driven from a real Claude Code session (2.1.309, desktop)

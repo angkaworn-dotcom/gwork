@@ -16,16 +16,19 @@ const args = process.argv.slice(2)
 const opt = (name) => { const i = args.indexOf(`--${name}`); return i > -1 ? args[i + 1] : undefined }
 const HOME = process.env.GWORK_HOME ?? join(homedir(), '.gwork')
 const days = Number(opt('days') ?? 30)
+if (!Number.isFinite(days) || days <= 0) { console.error('gwork-stats: --days needs a positive number'); process.exit(1) }
 const repo = args.includes('--all') ? null : opt('repo') ? resolve(opt('repo')) : rootOf(process.cwd())
 const cutoff = Date.now() - days * 86400000
 
 const events = []
 let files = []
 try { files = readdirSync(join(HOME, 'log')).filter(f => /^\d{4}-\d{2}\.jsonl$/.test(f)).sort() } catch { /* no log yet */ }
-for (const f of files) for (const line of readFileSync(join(HOME, 'log', f), 'utf8').split('\n')) {
+const readLog = (f) => { try { return readFileSync(join(HOME, 'log', f), 'utf8') } catch { return '' } } // a directory or an unreadable file is not a log
+for (const f of files) for (const line of readLog(f).split('\n')) {
   if (!line) continue
   let e
   try { e = JSON.parse(line) } catch { continue }
+  if (e === null || typeof e !== 'object') continue // a stray scalar line is not an event
   if (Date.parse(e.at) >= cutoff && (!repo || e.repo === repo)) events.push(e)
 }
 

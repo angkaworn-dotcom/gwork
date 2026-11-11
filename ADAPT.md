@@ -27,6 +27,9 @@ Two more keys under `tasklog`, both read by `hooks/tasklog-gotcha.mjs`:
 - `fileInjection`: `"fallback"` (default) — when the edited file's module has no INDEX row, inject the rows whose entries mention that file (by full path, or by bare filename when it is unique in the repo) · `"always"` — do both every time · `false` — module lookup only
 - `unclosedCommits`: `3` (default) — at session start, say once when this many commits have landed since the last task-log entry · `0` turns it off
 
+### Limits on a `forbidden` pattern
+Patterns are JavaScript regular expressions, matched one line at a time. A pattern that nests one repetition inside another — `(a+)+`, `(\\w*)*` — is refused by `tasklog-check` and skipped by the edit hook: on a line that almost matches it can run for minutes. Rewrite it with a single level of repetition. The shell-write check sees redirects (`>`, `>>`, `>|`, `&>`), `tee`, `sed -i` and `perl -i`, and follows a leading `cd`; it does not see a file written by a script (`python -c`, `node -e`), copied in with `cp`, or named through a variable.
+
 ### `driftNotice` — the once-a-day copy check
 ```json
 "driftNotice": false

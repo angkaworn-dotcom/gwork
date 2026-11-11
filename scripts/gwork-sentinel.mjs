@@ -64,7 +64,7 @@ function currentState() {
   let hooksPath = 'MISSING'
   try { hooksPath = execSync('git config core.hooksPath', { cwd: REPO, encoding: 'utf8' }).trim() || 'MISSING' } catch { /* unset */ }
   let cfg = {}
-  try { cfg = JSON.parse(readFileSync(join(REPO, 'gwork.json'), 'utf8')) } catch { /* absent/broken = defaults; guards hash reflects that */ }
+  try { cfg = JSON.parse(readFileSync(join(REPO, 'gwork.json'), 'utf8').replace(/^\uFEFF/, '')) ?? {} } catch { /* absent/broken = defaults; guards hash reflects that */ }
   const guards = sha(JSON.stringify({ forbidden: cfg.forbidden ?? [], prepush: cfg.prepush ?? null }))
   return { files, hooksPath, guards }
 }

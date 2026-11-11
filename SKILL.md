@@ -50,7 +50,7 @@ git commit --allow-empty -m "bad"         # must be blocked by commit-msg (then 
 ```
 Test the hook: edit a file in a module that has a gotcha in INDEX → injection appears the first time, silent the second time.
 `node <SKILL>/scripts/gwork-drift.mjs --repo <REPO>` must report every copy as matching. After a week of use, `node <SKILL>/scripts/gwork-stats.mjs` shows what the hooks actually delivered.
-If the sentinel is installed, `node e2e/tools/unit.mjs` from the kit exercises it end-to-end (114 deterministic cases).
+If the sentinel is installed, `node e2e/tools/unit.mjs` from the kit exercises it end-to-end (114 deterministic cases). `node e2e/tools/unit-edge.mjs` adds 336 more: malformed input, odd repos and configs, and every hook reply held to the harness's documented contract.
 
 ## Self-repair — the kit fixes itself when it breaks in the field
 
@@ -59,7 +59,7 @@ Iron rule: **a kit bug found during install or daily use is fixed at the source,
 1. **Root-cause first** (evidence, not guess) — reproduce the failure minimally before touching anything
 2. **Fix the source file in this skill folder**, then sync the fix to the installed copy in the repo you're working in (installed copies are deployments, not forks — never let them drift; add a code comment explaining the why)
 3. **Append the lesson to `LESSONS.md`** (newest first): id `L-xxx` · date · repo found in · symptom · root cause · fix. If the failure was an install step (not a code bug), also update the install instructions above in the same session, citing the `L-xxx`
-4. **Rerun the harness** when the changed file is covered: `node e2e/tools/unit.mjs` after touching the sentinel, hooks, or tasklog-check; full e2e per [e2e/README.md](e2e/README.md) for behavior changes. Changed file not covered → say so explicitly in the lesson
+4. **Rerun the harness** when the changed file is covered: `node e2e/tools/unit.mjs` and `node e2e/tools/unit-edge.mjs` after touching the sentinel, hooks, or tasklog-check; full e2e per [e2e/README.md](e2e/README.md) for behavior changes. Changed file not covered → say so explicitly in the lesson
 5. **Check for drift before any update:** `node scripts/gwork-drift.mjs --repo <REPO>` from the kit lists every installed copy that differs. `behind` is safe to overwrite; `local edit` is a fix that exists only in that copy — move it into the kit first (L-008)
 6. **Sentinel repos:** if a repaired file is under a sentinel snapshot, pushes there will block until the owner re-runs `node scripts/gwork-sentinel.mjs update` — tell them, don't work around it
 

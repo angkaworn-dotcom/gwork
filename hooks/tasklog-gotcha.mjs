@@ -13,6 +13,7 @@
  *   4. once per (session, module) and once per (session, file) — no context spam
  * On a Bash command: deny a shell write (redirect, tee, sed -i) that puts a forbidden pattern
  *   into a forbidden path. Best effort: it narrows the "raw shell write" hole, it does not close it.
+ *   The repo is found from each write target (after a leading `cd`), then from cwd — as for an edit.
  * On SessionStart: forget what was injected when the context was cleared or compacted (the
  *   model no longer has it), and remind once when commits have piled up with no task-log entry.
  *
@@ -287,10 +288,6 @@ const withWarnings = (extra, more = []) => {
 // ============ Bash: a shell write ============
 if (!filePath) {
   if (!command) ok()
-  root = rootOf(cwd)
-  if (!root) ok()
-  loadCfg()
-  const rules = forbiddenRules()
   const unq = (t) => t.replace(/^["']|["']$/g, '')
   const TOK = `("[^"]+"|'[^']+'|[^\\s;|&()<>]+)`
   // Each simple command is judged with the directory it runs in: `cd lib/money && echo … > a.js`
@@ -301,7 +298,7 @@ if (!filePath) {
   for (const seg of command.split(/&&|\|\||;|\n/)) {
     const cd = seg.match(new RegExp(`^\\s*cd\\s+${TOK}\\s*$`))
     if (cd) { const d = unq(cd[1]); dir = d.startsWith('/') ? d : join(dir, d); continue }
-    const add = (t) => { const u = unq(t); if (u) targets.add(u.startsWith('/') || u.startsWith('~') ? u : join(dir, u)) }
+    const add = (t) => { const u = unq(t); if (u) targets.add(u.startsWith('/') ? u : u.startsWith('~/') ? join(homedir(), u.slice(2)) : join(dir, u)) }
     // stdout redirects only (`>`, `>>`, `>|`, `1>`, `&>`): `2> f` sends stderr, not the text of the
     // command, into f. Not fd dups (`2>&1`), comparisons or arrows (`=>`, `->`).
     for (const m of seg.matchAll(new RegExp(`(?<![<>&=\\d-])(?:1|&)?>>?\\|?(?!&)\\s*${TOK}`, 'g'))) add(m[1])
@@ -310,17 +307,32 @@ if (!filePath) {
     for (const m of seg.matchAll(/\b(?:sed|perl)\s[^|;&]*?(?:-[a-zA-Z]*i\b|--in-place)[^|;&]*/g))
       for (const tok of m[0].match(new RegExp(TOK, 'g')) ?? []) if (!tok.startsWith('-') && !/^(sed|perl)$/.test(tok)) add(tok)
   }
-  const rels = [...targets].map(relOf)
-  for (const rel of rels) {
-    const rule = rules.find(r => r.pathRe.test(rel) && r.patRe.test(command))
-    if (rule) {
-      log('deny-bash-forbidden', { file: rel, pattern: rule.pattern })
-      deny(`[gwork forbidden] this command writes /${rule.pattern}/ into ${rel}, which gwork.json forbids${rule.reason ? ` — ${rule.reason}` : ''}. ${FORBIDDEN_TAIL}`)
+  // The TARGET decides which repo's rules apply, exactly as for an edit: seen live, a session
+  // whose cwd was outside any gwork repo ran `cd <repo> && echo … > lib/money/x.js` and the
+  // forbidden write went through, because the repo was looked up from cwd alone.
+  const byRoot = new Map()
+  for (const t of targets) {
+    const abs = resolve(cwd, t), r = rootOf(dirname(abs)) ?? rootOf(cwd)
+    if (r) byRoot.set(r, [...(byRoot.get(r) ?? []), abs])
+  }
+  if (!byRoot.size) { root = rootOf(cwd); if (root) { loadCfg(); forbiddenRules() } ok(cfgWarn ? withWarnings() : undefined) }
+  for (const [r, files] of byRoot) {
+    root = r; loadCfg()
+    const rules = forbiddenRules()
+    for (const rel of files.map(relOf)) {
+      const rule = rules.find(x => x.pathRe.test(rel) && x.patRe.test(command))
+      if (rule) {
+        log('deny-bash-forbidden', { file: rel, pattern: rule.pattern })
+        deny(`[gwork forbidden] this command writes /${rule.pattern}/ into ${rel}, which gwork.json forbids${rule.reason ? ` — ${rule.reason}` : ''}. ${FORBIDDEN_TAIL}`)
+      }
     }
   }
-  // the same lessons an edit of those files would get — for targets inside the repo only, and a
-  // few at most: a command that touches forty files is a build, not an edit
-  const said = rels.filter(r => !r.startsWith('/') && !r.startsWith('~') && !r.startsWith('..')).slice(0, 4).map(lessonsFor).filter(Boolean)
+  // the same lessons an edit of those files would get — for targets inside a repo only, and a
+  // few at most: a command that touches forty files is a build, not an edit. One repo per
+  // command: the lesson state is per repo, and a command that writes into two is rare.
+  const [first, files] = [...byRoot][0]
+  root = first; cfgWarn = null; loadCfg(); forbiddenRules()
+  const said = files.map(relOf).filter(r => !r.startsWith('/') && !/^[A-Za-z]:/.test(r)).slice(0, 4).map(lessonsFor).filter(Boolean)
   ok(said.length || cfgWarn ? withWarnings(said.join('\n\n')) : undefined)
 }
 

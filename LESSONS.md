@@ -4,6 +4,15 @@ Append-only, newest first. Every entry = a bug the kit hit in a real repo, fixed
 
 Format: `## L-xxx — <one-line symptom>` · date · repo · Root cause · Fix · Harness.
 
+## L-016 — first session started with every hook in place: a shell write from outside the repo was never looked at
+
+- **Date:** 2026-11-11 · **Repo:** an e2e sandbox, driven from a real Claude Code session (2.1.318, desktop) whose working directory was the kit, not the sandbox
+- **Confirmed live:** the `Bash` matcher fires — with the working directory inside the repo, `echo "n.toFixed(2)" > lib/money/x2.js` was denied with `[gwork forbidden] this command writes …` and no file appeared; a clean heredoc into the same module ran and carried the module gotcha as hook context · the model profile arrives on the first tool call of a fresh session (`PreToolUse`), not at `SessionStart`: nothing has named the model yet when the session opens.
+- **Symptom found:** from a working directory outside the repo, `cd <repo> && echo "n.toFixed(2)" > lib/money/x.js` was not denied. The file was written, and the hook log held no line.
+- **Root cause:** the `Bash` branch looked the repo up from the session's working directory only. Edits take the repo from the file being edited; shell writes did not, so the leading `cd` moved the target but not the rules. An absolute target had the same hole.
+- **Fix:** each shell-write target is resolved to a path and decides its own repo, with the working directory as the fallback — the rule edits already followed. A command writing into two repos is checked against both forbidden lists; lessons come from the first.
+- **Harness:** `node e2e/tools/unit-edge.mjs` 346/346, five new `bash-root` cases, three of which fail on the old hook. **Still not checked live:** context returned at `SessionStart` (this session opened where there was nothing to say, and a silent hook leaves no trace of having run), and that an edit still prompts for permission (the session ran in a mode that never prompts).
+
 ## L-015 — an agent that never uses the edit tools never gets a gotcha
 
 - **Date:** 2026-11-11 · **Repo:** e2e sandboxes, seven scenarios run by real agents (results in `e2e/scenarios.md`)

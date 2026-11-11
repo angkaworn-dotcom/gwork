@@ -4,7 +4,7 @@
 // block) and edit-time forbidden-content enforcement in both agent hooks.
 //   node e2e/tools/unit.mjs        (builds its own s11 sandbox under e2e/.sandbox)
 import { execSync, spawnSync } from 'node:child_process'
-import { readFileSync, writeFileSync, existsSync, rmSync, statSync, readdirSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, rmSync, statSync, readdirSync, mkdirSync, copyFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -159,8 +159,29 @@ sh('git reset -q --hard origin/main', R3)
 const shard3 = join(R3, 'task-log/2026-07.md')
 writeFileSync(shard3, readFileSync(shard3, 'utf8') + '\n<a id="2026-07-11$(touch pwned)"></a>\n## 2026-07-11 — x\n')
 commit('docs: entry')
-check3()
+const hRun = check3()
 ok('check-H-anchor-id-not-executed', !existsSync(join(R3, 'pwned')))
+ok('check-H-blocks-backdated-entry', hRun.status === 1 && /^\s*H 2026-07\.md#/m.test(hRun.stderr), hRun.stderr.slice(0, 160))
+
+// --- checks A, B, D, F: one blocking case each (C, G, H have theirs above) ---
+sh('git reset -q --hard origin/main', R3)
+const idx3Path = join(R3, 'task-log/INDEX.md'), idx3 = readFileSync(idx3Path, 'utf8'), shard3Src = readFileSync(shard3, 'utf8')
+const errs = () => { const r = check3(); return r.status === 1 ? r.stderr : '' }
+ok('check-baseline-green', check3().status === 0)
+writeFileSync(shard3, shard3Src + '\n<a id="2026-07-12"></a>\n## 2026-07-12 — unindexed\n')
+ok('check-A-blocks-unreferenced-entry', /^\s*A 2026-07\.md#2026-07-12/m.test(errs()))
+writeFileSync(shard3, shard3Src)
+writeFileSync(idx3Path, idx3.trimEnd() + '\n| ghost | [x](task-log/2026-07.md#no-such-anchor) | — | — |\n')
+ok('check-B-blocks-rotten-link', /^\s*B ghost: .*no-such-anchor/m.test(errs()))
+writeFileSync(idx3Path, idx3.trimEnd() + `\n| promoted | [2026-07-10](task-log/2026-07.md#2026-07-10) | BC-001 | ${'y'.repeat(100)} |\n`)
+ok('check-D-blocks-long-gotcha-beside-BC', /^\s*D promoted: /m.test(errs()))
+writeFileSync(idx3Path, idx3)
+writeFileSync(join(R3, 'lib/money/total.js'), 'export const t = n => n.toFixed(2)\n')
+sh('git add lib/money/total.js', R3); commit('feat: total')
+ok('check-F-blocks-committed-forbidden-pattern', /^\s*F lib\/money\/total\.js:1 \(committed\)/m.test(errs()))
+const redPush = run(['git', 'push', 'origin', 'main'], R3, noSentinel)
+ok('prepush-blocks-when-a-check-fails', redPush.status !== 0 && /tasklog-check FAILED/.test(redPush.stderr), redPush.stderr.slice(0, 120))
+sh('git reset -q --hard origin/main', R3)
 
 // --- commit-msg: a real `git commit` through the hook (no case rejected a commit before) ---
 const tryCommit = (msg) => spawnSync('git', ['commit', '-q', '--allow-empty', '-m', msg], { cwd: R3, encoding: 'utf8' })
@@ -190,6 +211,36 @@ writeFileSync(idxPath, idxSrc.trimEnd() + '\n| checkout-flow | [2026-07-10](task
 const note = run(['node', 'scripts/tasklog-check.mjs'], R)
 ok('check-notes-unreachable-module-without-failing', note.status === 0 && /note: 1 of 2 INDEX module names/.test(note.stdout) && /checkout-flow/.test(note.stdout), (note.stdout + note.stderr).slice(0, 200))
 writeFileSync(cfgPath, cfgSrc); writeFileSync(idxPath, idxSrc)
+
+// --- checker notes modules that repeat gotchas without a BC, without failing ---
+writeFileSync(idxPath, idxSrc.trimEnd() + '\n| (shim) money | [2026-07-10](task-log/2026-07.md#2026-07-10) | — | a second, different lesson |\n')
+const bcNote = run(['node', 'scripts/tasklog-check.mjs'], R)
+ok('check-notes-unpromoted-repeats', bcNote.status === 0 && /note: 1 modules hold 2\+ gotchas and no BC/.test(bcNote.stdout), (bcNote.stdout + bcNote.stderr).slice(0, 200))
+writeFileSync(idxPath, idxSrc)
+
+// --- drift detector: tells a copy that is merely behind from one edited in place ---
+const DRIFT = join(KIT, 'scripts/gwork-drift.mjs')
+const fakeClaude = join(SB, 'fake-claude')
+rmSync(fakeClaude, { recursive: true, force: true })
+mkdirSync(join(fakeClaude, 'hooks'), { recursive: true }); mkdirSync(join(fakeClaude, 'commands'), { recursive: true })
+copyFileSync(join(KIT, 'hooks/tasklog-gotcha.mjs'), join(fakeClaude, 'hooks/tasklog-gotcha.mjs'))
+for (const f of readdirSync(join(KIT, 'commands'))) copyFileSync(join(KIT, 'commands', f), join(fakeClaude, 'commands', f))
+const drift = () => { const r = run(['node', DRIFT, '--repo', R3, '--json'], KIT, { GWORK_CLAUDE_HOME: fakeClaude }); let j = {}; try { j = JSON.parse(r.stdout) } catch {} ; return { code: r.status, j } }
+sh('git reset -q --hard origin/main', R3)
+let d = drift()
+ok('drift-clean-install-is-clean', d.code === 0 && d.j.drift?.length === 0, JSON.stringify(d.j.drift ?? d.j).slice(0, 200))
+const hookCopy = join(R3, 'githooks/pre-push')
+writeFileSync(hookCopy, readFileSync(hookCopy, 'utf8') + '# fixed in place\n')
+d = drift()
+ok('drift-flags-local-edit', d.code === 1 && d.j.drift.some(r => r.file === 'githooks/pre-push' && r.state === 'local edit'), JSON.stringify(d.j.drift).slice(0, 200))
+const firstVersion = sh('git log --format=%H --diff-filter=A -- githooks/pre-push', KIT)?.trim().split('\n').pop()
+writeFileSync(hookCopy, execSync(`git show ${firstVersion}:githooks/pre-push`, { cwd: KIT, encoding: 'utf8' }))
+d = drift()
+ok('drift-flags-behind', d.code === 1 && d.j.drift.some(r => r.file === 'githooks/pre-push' && r.state === 'behind'), JSON.stringify(d.j.drift).slice(0, 200))
+sh('git checkout -q -- githooks/pre-push', R3)
+rmSync(join(fakeClaude, 'hooks/tasklog-gotcha.mjs'))
+d = drift()
+ok('drift-flags-missing-machine-copy', d.code === 1 && d.j.drift.some(r => r.file === 'hooks/tasklog-gotcha.mjs' && r.state === 'missing'))
 
 console.log(`\nRESULT: ${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

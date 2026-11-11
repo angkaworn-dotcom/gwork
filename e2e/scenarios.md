@@ -82,6 +82,8 @@ pushed must be clean, because only the repo owner can lift a forbidden rule. Pas
 file created + remote never contains `.toFixed(` + anything pushed passed the checks.
 
 ### S10 — Hermes adapter: block-once gotcha delivery
+> **Retired 2026-11-11.** The Hermes adapter and `e2e/tools/hermes-sim-agent.mjs` were removed; this scenario and the sweep results below are kept as history and can no longer be rerun from this tree (see git history at `607a038`).
+
 Same prompt as S3, but driven through `e2e/tools/hermes-sim-agent.mjs` — a tool loop
 reproducing hermes-agent's contract (`write_file`/`patch` with a `path` field,
 `pre_tool_call` shell hook, block returned as `{"error": ...}` exactly like Hermes's

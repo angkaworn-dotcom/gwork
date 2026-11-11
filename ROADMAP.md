@@ -103,6 +103,8 @@ A is trying to avoid.
 |---|------|---------------|
 | 1 | Core / Adapter split ⭐ | **Gate met 2026-07-15 — first second consumer shipped: Hermes Agent** (`hermes/` — pre_tool_call hook adapter + 5 SKILL.md skills, e2e S10 3/3). The friction found in practice: only stdin field names, tool names, and output shape differ; the core needed zero changes. No further abstraction until a *third* consumer shows what varies. |
 | 18 | LLM Agnostic ⭐ | Same gate as #1 — they are the same work item. Hermes adapter is the first data point. |
+
+> **2026-11-11:** the Hermes adapter (`hermes/`, its e2e tools and unit cases) was removed — Hermes is no longer used here. What it taught stands: only stdin field names, tool names and output shape differed, and the core needed no change. The adapter is in git history at `607a038` for whoever needs a second consumer again.
 | 5 | Dependency Graph (edit Visit → inject Customer/Project too) ⭐ | A real case where module-scoped injection missed a needed dependency and caused a mistake. |
 | 6 | Context Ranking (score gotchas/docs, inject top-N) | Measurements from real usage showing current injection is too big or misses the important item. Don't optimize what has never been measured. |
 | 10 | Prompt Builder (generate per-task context instead of one big CLAUDE.md) | Same measurement gate as #6; CLAUDE.template.md staying short is the current mitigation. |

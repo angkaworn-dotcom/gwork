@@ -103,7 +103,7 @@ const winR = R.replace(/\\/g, '/')
 const LOGHOME = join(SB, 'log-home')
 rmSync(LOGHOME, { recursive: true, force: true })
 const feed = (hookRel, payload) => spawnSync('node', [join(KIT, hookRel)], { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, GWORK_HOME: LOGHOME } }).stdout
-const CL = 'hooks/tasklog-gotcha.mjs', HE = 'hermes/hooks/tasklog-gotcha-hermes.mjs'
+const CL = 'hooks/tasklog-gotcha.mjs'
 
 let o = feed(CL, { tool_input: { file_path: `${winR}/lib/money/display.js`, content: 'const d=n=>n.toFixed(2)' }, cwd: winR, session_id: 'u1' })
 ok('edit-claude-forbidden-denies', /"permissionDecision":"deny"/.test(o) && /forbidden/i.test(o), o.slice(0, 80))
@@ -111,8 +111,6 @@ ok('edit-claude-forbidden-denies', /"permissionDecision":"deny"/.test(o) && /for
 o = feed(CL, { tool_input: { file_path: `${winR}/lib/util.js`, content: 'const d=n=>n.toFixed(2)' }, cwd: winR, session_id: 'u2' })
 ok('edit-claude-otherpath-allowed', !/"permissionDecision":"deny"/.test(o))
 
-o = feed(HE, { tool_name: 'write_file', tool_input: { path: `${winR}/lib/money/display.js`, content: 'const d=n=>n.toFixed(2)' }, cwd: winR, session_id: 'u3' })
-ok('edit-hermes-forbidden-blocks', /"action":"block"/.test(o) && /forbidden/i.test(o), o.slice(0, 80))
 
 // --- the Claude hook never answers "allow": that would skip the user's permission prompt ---
 o = feed(CL, { tool_input: { file_path: `${winR}/lib/util.js`, content: 'x' }, cwd: winR, session_id: 'u7' })
@@ -123,8 +121,6 @@ ok('edit-claude-gotcha-without-permission-decision', /additionalContext/.test(o)
 // --- hooks resolve the repo from the edited file, not from cwd (session started elsewhere) ---
 o = feed(CL, { tool_input: { file_path: `${winR}/lib/money/display.js`, content: 'const d=n=>n.toFixed(2)' }, cwd: KIT, session_id: 'u4' })
 ok('edit-claude-root-from-file-not-cwd', /"permissionDecision":"deny"/.test(o), o.slice(0, 80))
-o = feed(HE, { tool_name: 'write_file', tool_input: { path: `${winR}/lib/money/display.js`, content: 'const d=n=>n.toFixed(2)' }, cwd: KIT, session_id: 'u5' })
-ok('edit-hermes-root-from-file-not-cwd', /"action":"block"/.test(o), o.slice(0, 80))
 o = feed(CL, { tool_input: { file_path: 'lib/money/display.js', content: 'const d=n=>n.toFixed(2)' }, cwd: winR, session_id: 'u6' })
 ok('edit-claude-relative-path-denied', /"permissionDecision":"deny"/.test(o), o.slice(0, 80))
 
@@ -204,8 +200,6 @@ writeFileSync(idxPath, idxSrc.trimEnd() + '\n| (shim) money | [2026-07-10](task-
 const uniqSid = `multi-${process.pid}-${Date.now()}`
 o = feed(CL, { tool_input: { file_path: `${winR}/lib/money/display.js`, content: 'x' }, cwd: winR, session_id: uniqSid })
 ok('gotcha-claude-all-rows-of-module', /formatMoney/.test(o) && /half-even/.test(o) && /BC-007/.test(o), o.slice(0, 160))
-o = feed(HE, { tool_name: 'write_file', tool_input: { path: `${winR}/lib/money/display.js`, content: 'x' }, cwd: winR, session_id: uniqSid })
-ok('gotcha-hermes-all-rows-of-module', /formatMoney/.test(o) && /half-even/.test(o), o.slice(0, 160))
 
 // --- checker notes INDEX rows no module rule can reach, without failing ---
 const cfgR = JSON.parse(readFileSync(cfgPath, 'utf8'))
@@ -255,9 +249,7 @@ ok('drift-flags-missing-machine-copy', d.code === 1 && d.j.drift.some(r => r.fil
 // ================= work-effectiveness round =================
 const u = (tag) => `${tag}-${process.pid}-${Date.now()}`
 const ctxOf = (out) => { try { return JSON.parse(out).hookSpecificOutput.additionalContext ?? '' } catch { return '' } }
-const edit = (hook, file, sid, cwd = winR) => feed(hook, hook === CL
-  ? { tool_name: 'Edit', tool_input: { file_path: `${winR}/${file}`, new_string: 'x' }, cwd, session_id: sid }
-  : { tool_name: 'write_file', tool_input: { path: `${winR}/${file}`, content: 'x' }, cwd, session_id: sid })
+const edit = (hook, file, sid, cwd = winR) => feed(hook, { tool_name: 'Edit', tool_input: { file_path: `${winR}/${file}`, new_string: 'x' }, cwd, session_id: sid })
 
 // --- file-level injection: a row filed under a topic name is reached through the entry that names the file ---
 const shardR = join(R, 'task-log/2026-07.md'), shardRSrc = readFileSync(shardR, 'utf8')
@@ -273,8 +265,6 @@ o = edit(CL, 'lib/deep/cart-totals-helper.js', u('base'))
 ok('inject-file-level-by-unique-basename', /totals are recomputed/.test(ctxOf(o)), o.slice(0, 160))
 o = edit(CL, 'lib/utility.js', u('near'))
 ok('inject-file-level-needs-whole-path', o.trim() === '', o.slice(0, 120))
-o = edit(HE, 'lib/util.js', u('hfile'))
-ok('inject-file-level-hermes-blocks-once', /"action":"block"/.test(o) && /totals are recomputed/.test(o), o.slice(0, 160))
 writeFileSync(cfgPath, JSON.stringify({ ...JSON.parse(cfgSrc), tasklog: { fileInjection: false } }, null, 2) + '\n')
 ok('inject-file-level-can-be-switched-off', edit(CL, 'lib/util.js', u('off')).trim() === '')
 writeFileSync(cfgPath, cfgSrc)
@@ -389,7 +379,6 @@ const sBroken = u('broken')
 o = ctxOf(edit(CL, 'lib/whatever.js', sBroken))
 ok('edit-hook-warns-on-broken-config', /gwork\.json cannot be parsed/.test(o) && /NOT checked/.test(o), o.slice(0, 160))
 ok('edit-hook-warns-on-broken-config-once', edit(CL, 'lib/whatever2.js', sBroken).trim() === '')
-ok('hermes-hook-blocks-once-on-broken-config', /"action":"block"/.test(edit(HE, 'lib/whatever.js', u('hbroken'))))
 writeFileSync(cfgPath, cfgSrc)
 
 // --- drift: another checkout of the kit is source, not an install ---

@@ -3,7 +3,7 @@
  * gwork-sentinel.mjs — tamper detector for the enforcement machinery itself.
  * The "filter stack" layer: enforcement state is snapshotted OUTSIDE the repo
  * (~/.gwork/sentinel/) and two independent channels verify it — git hooks at push
- * time and the agent-harness hooks (Claude PreToolUse / Hermes pre_tool_call) at
+ * time and the agent-harness hooks (Claude PreToolUse) at
  * edit time. Disabling one channel is exactly what the other channel detects.
  *
  * What it can and cannot promise (by design, documented honestly):

@@ -39,14 +39,6 @@ Then tell Claude Code to **"install gwork"** in your target repo — full steps 
 | `/gwork-status` | report install state + active config + log health |
 | `/gwork-update` | pull the latest kit and re-sync every copy made from it (machine files + this repo's hooks/scripts) |
 
-## Use with Hermes Agent
-
-The deterministic core (git hooks, tasklog-check, `forbidden` gate) is agent-agnostic
-and needs nothing. The gotcha hook and the slash commands have Hermes counterparts in
-[`hermes/`](hermes/README.md) — a `pre_tool_call` shell hook (block-once delivery) and
-five `SKILL.md` skills. Verified against hermes-agent's real hook dispatcher plus a
-live model loop (e2e S10, 3/3).
-
 ## Install
 
 ```bash

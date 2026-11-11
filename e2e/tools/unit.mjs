@@ -363,5 +363,11 @@ sh('git config core.hooksPath .husky', IR)
 const inst4 = install()
 ok('install-refuses-foreign-hookspath', inst4.status === 1 && /already "\.husky"/.test(inst4.stderr) && sh('git config core.hooksPath', IR)?.trim() === '.husky')
 
+// --- machine-only: no repo needed, nothing written outside the Claude home ---
+const IC2 = join(SB, 'install-claude-2')
+rmSync(IC2, { recursive: true, force: true })
+const mo = run(['node', join(KIT, 'scripts/gwork-install.mjs'), '--machine-only'], KIT, { GWORK_CLAUDE_HOME: IC2 })
+ok('install-machine-only-needs-no-repo', mo.status === 0 && existsSync(join(IC2, 'hooks/tasklog-gotcha.mjs')) && JSON.parse(readFileSync(join(IC2, 'settings.json'), 'utf8')).hooks.SessionStart.length === 2 && sh('git status --porcelain', KIT).split('\n').every(l => !/githooks|task-log/.test(l) || l.startsWith(' M') || l === ''), (mo.stdout + mo.stderr).slice(0, 200))
+
 console.log(`\nRESULT: ${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

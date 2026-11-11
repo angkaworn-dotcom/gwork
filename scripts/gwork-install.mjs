@@ -9,6 +9,7 @@
  * Usage (run out of the kit):
  *   node <kit>/scripts/gwork-install.mjs [--repo <path>]            repo half only
  *   node <kit>/scripts/gwork-install.mjs --machine [--repo <path>]  + ~/.claude hooks, commands, profiles, settings.json
+ *   node <kit>/scripts/gwork-install.mjs --machine-only             the machine half alone (no repo needed)
  *   --dry-run   print every action, change nothing        --force   overwrite a copy edited in place
  *
  * What it will NOT do, by design:
@@ -31,7 +32,7 @@ const opt = (name) => { const i = args.indexOf(`--${name}`); return i > -1 ? arg
 const KIT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const REPO = resolve(opt('repo') ?? process.cwd())
 const CLAUDE = process.env.GWORK_CLAUDE_HOME ?? join(homedir(), '.claude')
-const DRY = has('dry-run'), FORCE = has('force'), MACHINE = has('machine')
+const DRY = has('dry-run'), FORCE = has('force'), MACHINE_ONLY = has('machine-only'), MACHINE = has('machine') || MACHINE_ONLY
 
 const done = [], skipped = [], todo = []
 const act = (what, fn) => { done.push(what); if (!DRY) fn() }
@@ -65,6 +66,7 @@ const place = (group, kitRel, dest, { exec = false } = {}) => {
 }
 
 // ============ repo ============
+if (!MACHINE_ONLY) {
 if (resolve(REPO) === KIT) { console.error('gwork-install: --repo is the kit itself — point it at the repo to install into'); process.exit(1) }
 if (git(REPO, 'rev-parse', '--git-dir') === null) { console.error(`gwork-install: ${REPO} is not a git repository`); process.exit(1) }
 const hooksPath = git(REPO, 'config', 'core.hooksPath')?.trim() ?? ''
@@ -91,6 +93,7 @@ if (!existsSync(join(REPO, 'gwork.json'))) todo.push('No gwork.json: the default
 todo.push('After `git add githooks`, `git ls-files -s githooks` must show 100755 (from Windows: git update-index --chmod=+x githooks/*).')
 todo.push('CLAUDE.md: start from CLAUDE.template.md; move long gotchas into Known Bug Classes.')
 todo.push('Review, then commit — the installer stages nothing.')
+}
 
 // ============ machine ============
 if (MACHINE) {
@@ -139,9 +142,9 @@ if (MACHINE) {
 }
 todo.push('Optional, when an agent runs this repo unattended: the sentinel (SKILL.md step 7). An agent may install it; only the owner attests.')
 
-console.log(`gwork-install${DRY ? ' (dry run — nothing changed)' : ''} — repo ${REPO}${MACHINE ? ` · machine ${CLAUDE}` : ''}`)
+console.log(`gwork-install${DRY ? ' (dry run — nothing changed)' : ''} —${MACHINE_ONLY ? '' : ` repo ${REPO}`}${MACHINE ? `${MACHINE_ONLY ? '' : ' ·'} machine ${CLAUDE}` : ''}`)
 console.log(done.length ? done.map(d => `  ${DRY ? 'would' : 'did'}: ${d}`).join('\n') : '  already up to date — nothing to do')
 if (skipped.length) console.log('\nSkipped:\n' + skipped.map(s => `  ${s}`).join('\n'))
 console.log('\nLeft for you:\n' + todo.map(t => `  - ${t}`).join('\n'))
-if (!DRY) console.log(`\nVerify: node scripts/tasklog-check.mjs · node "${join(KIT, 'scripts', 'gwork-drift.mjs')}" --repo "${REPO}"`)
+if (!DRY) console.log(MACHINE_ONLY ? `\nVerify: node "${join(KIT, 'scripts', 'gwork-drift.mjs')}"` : `\nVerify: node scripts/tasklog-check.mjs · node "${join(KIT, 'scripts', 'gwork-drift.mjs')}" --repo "${REPO}"`)
 process.exit(skipped.length ? 2 : 0)

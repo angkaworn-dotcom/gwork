@@ -22,6 +22,7 @@ Let `<SKILL>` = this skill folder, `<REPO>` = the target repo.
    node <SKILL>/scripts/gwork-install.mjs --repo <REPO> --dry-run     # read what it would do
    node <SKILL>/scripts/gwork-install.mjs --repo <REPO>               # repo half
    node <SKILL>/scripts/gwork-install.mjs --repo <REPO> --machine     # once per machine: ~/.claude hooks, commands, profiles, settings.json
+   node <SKILL>/scripts/gwork-install.mjs --machine-only              # the machine half alone, e.g. after updating the kit
    ```
    Repo half: copies `githooks/{pre-push,commit-msg,pre-commit}` (executable) and `scripts/{tasklog-check,migrate}.mjs`, sets `core.hooksPath`, creates an empty `task-log/`, warns when `.gitignore` hides a copied file (L-002).
    Machine half: copies the two hooks, the slash commands and the profiles, and registers the hooks in `~/.claude/settings.json` — adding what is missing, leaving every other entry alone, keeping the previous file as `settings.json.gwork-bak`.
@@ -48,7 +49,7 @@ git commit --allow-empty -m "bad"         # must be blocked by commit-msg (then 
 ```
 Test the hook: edit a file in a module that has a gotcha in INDEX → injection appears the first time, silent the second time.
 `node <SKILL>/scripts/gwork-drift.mjs --repo <REPO>` must report every copy as matching. After a week of use, `node <SKILL>/scripts/gwork-stats.mjs` shows what the hooks actually delivered.
-If the sentinel is installed, `node e2e/tools/unit.mjs` from the kit exercises it end-to-end (90 deterministic cases).
+If the sentinel is installed, `node e2e/tools/unit.mjs` from the kit exercises it end-to-end (91 deterministic cases).
 
 ## Self-repair — the kit fixes itself when it breaks in the field
 

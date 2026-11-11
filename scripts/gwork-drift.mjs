@@ -7,6 +7,8 @@
  *   behind      — identical to an older kit version → an update brings it forward
  *   local edit  — matches no kit version → someone fixed it in place; updating would DELETE
  *                 that fix. Upstream it first (Self-repair protocol, LESSONS L-008).
+ *   differs     — the kit is a shallow clone, so its older versions are not there to compare
+ *                 with: behind and edited cannot be told apart. `git fetch --unshallow` in the kit.
  * Reports only — changes nothing. Runs from the kit, never copied into a target repo.
  *
  * Usage: node <kit>/scripts/gwork-drift.mjs [--repo <path>] [--json]
@@ -47,6 +49,9 @@ const versionsOf = (kitRel) => {
   return map
 }
 
+// A shallow kit (CI checkout, `git clone --depth 1`) has no older versions to match against.
+// Calling every differing copy a "local edit" there would be a false alarm, so say what is known.
+const SHALLOW = git(KIT, 'rev-parse', '--is-shallow-repository')?.trim() === 'true'
 const rows = []
 const compare = (group, kitRel, installed, { optional = false } = {}) => {
   const kit = read(join(KIT, kitRel))
@@ -57,7 +62,9 @@ const compare = (group, kitRel, installed, { optional = false } = {}) => {
   const old = versionsOf(kitRel).get(sha(got))
   rows.push(old
     ? { group, file: kitRel, state: 'behind', detail: `matches kit ${old}` }
-    : { group, file: kitRel, state: 'local edit', detail: 'matches no kit version — upstream it before updating' })
+    : SHALLOW
+      ? { group, file: kitRel, state: 'differs', detail: 'kit history is shallow — cannot tell behind from edited (git fetch --unshallow in the kit)' }
+      : { group, file: kitRel, state: 'local edit', detail: 'matches no kit version — upstream it before updating' })
 }
 
 // --- repo copies (only where gwork is installed) ---

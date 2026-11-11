@@ -4,6 +4,16 @@ Append-only, newest first. Every entry = a bug the kit hit in a real repo, fixed
 
 Format: `## L-xxx — <one-line symptom>` · date · repo · Root cause · Fix · Harness.
 
+## L-018 — a task router by difficulty: what the data let it claim, and what it did not
+
+- **Date:** 2026-11-11 · **Repo:** real subagent briefs from past work, read for their shape only
+- **Asked for:** something that splits work by difficulty and says which model should take it.
+- **First version, and why it was wrong:** score a brief from its files, the repo's history and three word lists. Run on real briefs it put almost all of them in the top tier. Three signals fired on nearly every brief and so said nothing: brief length, "a forbidden rule guards this path" (a rule that covers most of an app — and a path behind a hard gate needs a strong model *less*, not more), and risk words anywhere in the text (a long brief says "production" somewhere whatever it is about).
+- **What the effort data showed:** where a brief's result recorded what the subagent spent, no word list separated cheap work from expensive work. The only signal that tracked effort was breadth: briefs naming ten or more files took about twice the tool calls, with a weak positive rank correlation between files named and tool calls.
+- **What was built:** `hooks/model-route.mjs`. Breadth and recorded history (bug class, gotcha) carry the score; the word lists stay as tunable priors and are read from the task statement only. It advises when the model chosen for a subagent sits below its tier or two steps above it (`block-once` denies the call once instead), and the same judgment is a command for a person choosing a session's model. Because the thresholds are not proven, the hook also records what every subagent really cost, and `gwork-stats.mjs` prints tokens and tool calls per tier — the test of whether the tiers mean anything.
+- **Also seen:** the large majority of subagent calls set no model at all, so they ran on the session's own. The cheap win is not finer tiers; it is naming a model for the light work.
+- **Harness:** `node e2e/tools/unit-edge.mjs` 391/391, 45 routing cases. **Not shown:** that following the advice saves anything or costs quality. That needs the per-tier numbers from real use, and the default thresholds will sit differently in a repo whose briefs routinely name many files.
+
 ## L-017 — one model switch, three profile blocks, the first one naming the wrong model
 
 - **Date:** 2026-11-11 · **Repo:** a live Claude Code session (2.1.318, desktop) whose model was switched from another session

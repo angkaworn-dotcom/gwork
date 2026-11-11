@@ -30,6 +30,23 @@ Two more keys under `tasklog`, both read by `hooks/tasklog-gotcha.mjs`:
 ### Limits on a `forbidden` pattern
 Patterns are JavaScript regular expressions, matched one line at a time. A pattern that nests one repetition inside another — `(a+)+`, `(\\w*)*` — is refused by `tasklog-check` and skipped by the edit hook: on a line that almost matches it can run for minutes. Rewrite it with a single level of repetition. The shell-write check sees redirects (`>`, `>>`, `>|`, `&>`), `tee`, `sed -i` and `perl -i`, and follows a leading `cd`; it does not see a file written by a script (`python -c`, `node -e`), copied in with `cp`, or named through a variable.
 
+### `routing` — which model takes a subagent task (used by `hooks/model-route.mjs`)
+```json
+"routing": {
+  "mode": "advise",
+  "tiers": { "light": "haiku", "standard": "sonnet", "heavy": "opus" },
+  "standardAt": 1, "heavyAt": 4,
+  "risky": ["schema", "migrat", "payment"],
+  "openEnded": ["investigat", "root cause"],
+  "mechanical": ["typo", "rename", "\\bdocs?\\b"]
+}
+```
+Every task handed to a subagent is scored from what it touches (see the hook's header for the signals) and placed in a tier. `mode`: `"advise"` (default) says so when the chosen model and the tier differ · `"block-once"` denies the mismatched call once with the recommendation · `"off"`, or `"routing": false`. `tiers` may name models or your own agent types (`worker-haiku`, `senior-sonnet`): the family is read from the name. The three word lists are regular expressions matched against the task statement; each replaces its default list.
+
+The same judgment is available by hand: `node ~/.claude/hooks/model-route.mjs --task "<what is to be done>" [--files a b]`.
+
+The word lists are starting points, not measured facts. The hook records what every subagent actually cost; `scripts/gwork-stats.mjs` prints tokens and tool calls per tier. Tune from that.
+
 ### `driftNotice` — the once-a-day copy check
 ```json
 "driftNotice": false

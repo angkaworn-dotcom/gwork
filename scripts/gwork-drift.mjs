@@ -89,7 +89,7 @@ if (repoInstalled && !isKitCheckout) {
 }
 
 // --- machine copies ---
-for (const f of ['tasklog-gotcha.mjs', 'model-profile.mjs']) compare('machine', `hooks/${f}`, join(CLAUDE, 'hooks', f), { optional: f === 'model-profile.mjs' })
+for (const f of ['tasklog-gotcha.mjs', 'model-profile.mjs', 'model-route.mjs']) compare('machine', `hooks/${f}`, join(CLAUDE, 'hooks', f), { optional: f !== 'tasklog-gotcha.mjs' })
 const list = (dir, re) => { try { return readdirSync(join(KIT, dir)).filter(f => re.test(f)) } catch { return [] } }
 const hasAny = (dir) => { try { return readdirSync(dir).length > 0 } catch { return false } }
 if (hasAny(join(CLAUDE, 'gwork-profiles'))) for (const f of list('profiles', /\.md$/)) compare('machine', `profiles/${f}`, join(CLAUDE, 'gwork-profiles', f))

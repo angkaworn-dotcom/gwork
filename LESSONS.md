@@ -4,6 +4,13 @@ Append-only, newest first. Every entry = a bug the kit hit in a real repo, fixed
 
 Format: `## L-xxx — <one-line symptom>` · date · repo · Root cause · Fix · Harness.
 
+## L-011 — check F and the edit hook read the same rule with two different regex engines
+
+- **Date:** 2026-11-11 · **Repo:** gwork itself (gate-precision pass)
+- **Symptom:** none yet in the field — found by reading. A `forbidden` pattern was validated and enforced at edit time by JavaScript's engine, then enforced at push by `git grep -P` (PCRE). A pattern valid in one and not the other (a variable-length lookbehind, a `\u` escape) either meant something different at push or made the whole checker exit with "git grep failed"; a git built without PCRE failed every push.
+- **Fix:** check F matches in JavaScript, line by line, over contents read with one `git cat-file --batch` for the files a rule's path can touch — from HEAD, or from the index with `--staged`. One engine, no PCRE dependency. Related: a `gwork.json` that exists but cannot be parsed used to switch the edit-time forbidden check off silently (the push still failed loud); both hooks now say so once per session.
+- **Harness:** `node e2e/tools/unit.mjs` 113/113, including a rule only JavaScript can parse, a binary file, CRLF lines and a staged deletion. **Cost, measured** on a repo whose one rule spans about 800 files: the checker went from 77 to 173 ms at push and from 59 to 87 ms at commit. Reading the files is the cost (about 100 ms); a whole-file prefilter before the per-line pass saved under 10 ms.
+
 ## L-010 — a raw NUL byte made the checker a binary file; the fix sat uncommitted in an installed skill clone
 
 - **Date:** 2026-10-27 (found in a field install) · upstreamed 2026-11-11

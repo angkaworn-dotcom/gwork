@@ -71,7 +71,14 @@ const rootOf = (start) => {
     const up = dirname(dir); if (up === dir) return null; dir = up
   }
 }
-const loadCfg = () => { try { cfg = JSON.parse(readFileSync(join(root, 'gwork.json'), 'utf8')) } catch { cfg = {} } } // no config = defaults
+// no config = defaults. A config that EXISTS but cannot be parsed is different: every gate at
+// push fails loud on it, while here the forbidden rules silently stop applying — so say it once.
+let cfgWarn = null
+const loadCfg = () => {
+  const p = join(root, 'gwork.json')
+  try { cfg = JSON.parse(readFileSync(p, 'utf8')) }
+  catch (e) { cfg = {}; if (existsSync(p)) cfgWarn = `[gwork] gwork.json cannot be parsed (${e.message}). Until it is fixed the forbidden rules are NOT checked at edit time, and commit and push will be blocked. Fix the file before doing anything else.` }
+}
 const relOf = (p) => {
   // strip the root prefix case-insensitively — on Windows the drive letter case may differ (C:/ vs c:/)
   const abs = resolve(cwd, p).replace(/\\/g, '/'), rootNorm = root.replace(/\\/g, '/') + '/'
@@ -206,8 +213,11 @@ try { seen = JSON.parse(readFileSync(stateFile, 'utf8')) } catch { /* fresh */ }
 const save = () => { try { writeFileSync(stateFile, JSON.stringify(seen)) } catch { /* re-inject at worst */ } }
 const okW = (extra) => { // every exit from here on goes through okW so a pending sentinel warning is never lost
   const warn = sentinelWarn && !seen.__sentinel ? sentinelWarn : null
-  if (warn) { seen.__sentinel = true; save() }
-  ok([warn, extra].filter(Boolean).join('\n\n') || undefined)
+  const cw = cfgWarn && !seen.__cfg ? cfgWarn : null
+  if (warn) seen.__sentinel = true
+  if (cw) { seen.__cfg = true; log('warn-config') }
+  if (warn || cw) save()
+  ok([cw, warn, extra].filter(Boolean).join('\n\n') || undefined)
 }
 
 // --- INDEX rows: split on unescaped pipes; a row counts only when it has something to say ---

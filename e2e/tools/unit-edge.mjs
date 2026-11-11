@@ -559,6 +559,9 @@ for (const [label, text, want] of [
   // a clone living in a directory with spaces and non-ASCII characters
   const odd = join(EDGE, 'clone with space ไทย')
   sh(`git clone -q "${join(SB, 'run-s9-2-remote.git')}" "${odd}"`, EDGE)
+  // the bare remote's HEAD names whatever init.defaultBranch is on this machine; where that is not
+  // "main" the clone checks out nothing (the first CI run failed exactly here) — check main out by name
+  sh('git checkout -q -B main origin/main', odd)
   sh('git config user.name e && git config user.email e@example.com && git config core.hooksPath githooks && git commit -q --allow-empty -m "chore: from odd path"', odd)
   if (process.platform !== 'win32') sh('chmod +x githooks/*', odd)
   const oddPush = run(['git', 'push', 'origin', 'main'], odd, env)

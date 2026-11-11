@@ -235,11 +235,18 @@ ok('drift-clean-install-is-clean', d.code === 0 && d.j.drift?.length === 0, JSON
 const hookCopy = join(R3, 'githooks/pre-push')
 writeFileSync(hookCopy, readFileSync(hookCopy, 'utf8') + '# fixed in place\n')
 d = drift()
-ok('drift-flags-local-edit', d.code === 1 && d.j.drift.some(r => r.file === 'githooks/pre-push' && r.state === 'local edit'), JSON.stringify(d.j.drift).slice(0, 200))
-const firstVersion = sh('git log --format=%H --diff-filter=A -- githooks/pre-push', KIT)?.trim().split('\n').pop()
-writeFileSync(hookCopy, execSync(`git show ${firstVersion}:githooks/pre-push`, { cwd: KIT, encoding: 'utf8' }))
-d = drift()
-ok('drift-flags-behind', d.code === 1 && d.j.drift.some(r => r.file === 'githooks/pre-push' && r.state === 'behind'), JSON.stringify(d.j.drift).slice(0, 200))
+// in a shallow kit the detector cannot rule out "behind", and says so instead of crying "local edit"
+const editedState = sh('git rev-parse --is-shallow-repository', KIT)?.trim() === 'true' ? 'differs' : 'local edit'
+ok('drift-flags-local-edit', d.code === 1 && d.j.drift.some(r => r.file === 'githooks/pre-push' && r.state === editedState), JSON.stringify(d.j.drift).slice(0, 200))
+// "behind" needs an OLDER committed version of the file, which a shallow or single-commit
+// checkout does not have (the first CI run failed exactly here) — skip rather than fake it
+const older = (sh('git log --format=%H -- githooks/pre-push', KIT) ?? '').trim().split('\n').filter(Boolean)
+  .map(c => sh(`git show ${c}:githooks/pre-push`, KIT)).find(v => v && v.replace(/\r\n/g, '\n') !== readFileSync(join(KIT, 'githooks/pre-push'), 'utf8').replace(/\r\n/g, '\n'))
+if (older) {
+  writeFileSync(hookCopy, older)
+  d = drift()
+  ok('drift-flags-behind', d.code === 1 && d.j.drift.some(r => r.file === 'githooks/pre-push' && r.state === 'behind'), JSON.stringify(d.j.drift).slice(0, 200))
+} else console.log('SKIP drift-flags-behind — kit checkout has no older version of githooks/pre-push')
 sh('git checkout -q -- githooks/pre-push', R3)
 rmSync(join(fakeClaude, 'hooks/tasklog-gotcha.mjs'))
 d = drift()

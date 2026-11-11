@@ -13,7 +13,7 @@ One principle: **any rule that can be checked deterministically becomes a hook/s
 | logged work must update INDEX (latest month) | `scripts/tasklog-check.mjs` in pre-push | push blocked |
 | rotten/wrong-shard INDEX links · gotcha too long · BC rows carrying text | tasklog-check | push blocked |
 | absolute prohibitions (`forbidden` patterns in gwork.json) | tasklog-check (check F) | push blocked — a prompt-level order is not an override; only the repo owner is, via gwork.json |
-| read gotchas before touching a module or a file | `hooks/tasklog-gotcha.mjs` (PreToolUse) | auto-injected — the AI never has to remember |
+| read gotchas before touching a module or a file — through the edit tools or a shell write | `hooks/tasklog-gotcha.mjs` (PreToolUse) | auto-injected — the AI never has to remember |
 | forbidden pattern staged for commit | `githooks/pre-commit` (check F on the index) | commit rejected |
 | everything above, when the push used `--no-verify` | `templates/gwork-check.yml` (installed with `--ci`, required by the owner) | pull request cannot merge |
 | an installed copy behind the kit, or fixed in place | `hooks/tasklog-gotcha.mjs` at session start, once a day | said to the agent — never blocking |

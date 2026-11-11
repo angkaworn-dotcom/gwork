@@ -330,13 +330,31 @@ const mustPass = [
   ['process substitution', `diff <(cat lib/money/format.js) <(echo "${BAD}")`],
   ['cd into the dir, write somewhere else', `cd lib/money && echo "${BAD}" > /tmp/elsewhere.js`],
   ['cd into the dir, then back out', `cd lib/money && cd ../other && echo "${BAD}" > a.js`],
-  ['a clean write into the forbidden dir', `echo "export const d = n => formatMoney(n)" > lib/money/a.js`],
   ['sed without -i', `sed 's/a/${BAD}/' lib/money/format.js`],
   ['test and comparison operators', `[ 3 -gt 2 ] && echo ok`],
   ['empty command', ``],
   ['200 KB command', 'echo ' + 'x'.repeat(200000)],
 ]
 for (const [label, command] of mustPass) { const r = bash(command); ok(`bash-pass: ${label}`, contract('PreToolUse', r).length === 0 && !denied(r) && r.stdout.trim() === '', contract('PreToolUse', r).join('; ') + r.stdout.slice(0, 120)) }
+// a shell write gets the same lessons an edit would: an agent panel showed a model writing every
+// file through heredocs and one-liners, so lessons tied to Edit/Write alone never reached it
+{
+  const sid = uid('bl')
+  const b = (command) => hook(G, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command }, cwd: R, session_id: sid })
+  let r = b(`cat > lib/money/a.js <<'EOF'\nexport const d = n => formatMoney(n)\nEOF`)
+  ok('bash-lessons: a clean heredoc write into a module gets its gotcha', contract('PreToolUse', r).length === 0 && !denied(r) && /formatMoney\(\) from lib\/money\/format\.js/.test(ctx(r)), r.stdout.slice(0, 160))
+  r = b(`echo "// more" >> lib/money/a.js`)
+  ok('bash-lessons: …once per session', contract('PreToolUse', r).length === 0 && r.stdout.trim() === '')
+  r = hook(G, { hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: { file_path: join(R, 'lib/money/b.js'), new_string: 'x' }, cwd: R, session_id: sid })
+  ok('bash-lessons: …and an edit in the same session does not repeat it', r.stdout.trim() === '')
+  r = hook(G, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'cd lib/money && echo "x" > c.js' }, cwd: R, session_id: uid('bl') })
+  ok('bash-lessons: after a cd', /formatMoney/.test(ctx(r)))
+  r = hook(G, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'echo x > /tmp/elsewhere.js; echo y > ../outside.js; ls lib/money' }, cwd: R, session_id: uid('bl') })
+  ok('bash-lessons: writes outside the repo and plain reads say nothing', contract('PreToolUse', r).length === 0 && r.stdout.trim() === '', r.stdout.slice(0, 120))
+  const forty = Array.from({ length: 40 }, (_, i) => `echo x > lib/money/f${i}.js`).join(' && ')
+  r = hook(G, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: forty }, cwd: R, session_id: uid('bl') })
+  ok('bash-lessons: forty targets stay inside the budget', contract('PreToolUse', r).length === 0 && ctx(r).length > 0 && ctx(r).length < 4000, `${ctx(r).length} chars`)
+}
 // documented residue: these write the pattern and are NOT caught — if one starts being caught, move it up
 for (const [label, command] of [
   ['python writes the file', `python3 -c "open('lib/money/a.js','w').write('${BAD}')"`],

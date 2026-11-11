@@ -163,14 +163,134 @@ if (EVENT === 'SessionStart') {
   ok(notes.join('\n\n') || undefined)
 }
 
-// ============ Bash: a shell write of forbidden content ============
+// ============ what the task-log has to say about one file ============
+// Shared by edits and by shell writes: measured in an agent panel, a model wrote every file
+// through `cat > f <<EOF` and python one-liners and never touched the edit tools, so lessons
+// attached only to Edit/Write never reached it.
+// --- module key: rules come from gwork.json at the root if present — users edit rules without touching code ---
+const DEFAULT_MODULES = [
+  { pattern: '^modules/([\\w-]+)/', name: '$1' },
+  { pattern: '^(?:lib|app/actions)/([\\w-]+)', name: '(shim) $1' },
+  { pattern: '^app/(?:visit/)?([\\w-]+)/', name: 'page:$1' },
+  { pattern: '^components/([\\w-]+)/', name: 'ui:$1' },
+  { pattern: '^tests/([\\w-]+)/', name: 'test:$1' },
+  { pattern: '^(prisma|hooks|scripts)/', name: '$1' },
+]
+const moduleOf = p => {
+  // read at call time: the config is loaded per branch, after this is defined
+  for (const r of (Array.isArray(cfg.modules) && cfg.modules.length ? cfg.modules : DEFAULT_MODULES)) {
+    let m
+    if (typeof r?.pattern !== 'string') continue
+    try { m = p.match(new RegExp(r.pattern)) } catch { continue } // bad regex in config → skip, never crash the hook
+    if (m) return String(r.name ?? '').replace(/\$(\d)/g, (_, i) => m[+i] ?? '')
+  }
+  return null
+}
+
+let seen = {}
+const save = () => { try { writeFileSync(stateFile, JSON.stringify(seen)) } catch { /* re-inject at worst */ } }
+const real = v => v && v !== 'TODO' && v !== '—' && v !== '-'
+const uniq = a => [...new Set(a.filter(real))]
+const rowKey = c => `${c[1]}\u0000${c[4]}`
+// Budget: the harness caps injected context at 10,000 characters, and one real INDEX row held
+// 8,000 characters of links alone. 12 gotchas and 8 links per section stay near 2,500.
+const MAX_SHOWN = 12, MAX_LINKS = 8
+const section = (rows, head, label, prefer) => {
+  const gotchas = uniq(rows.map(label)), bcs = uniq(rows.flatMap(c => c[3].split(/\s+/)))
+  const lines = gotchas.slice(0, MAX_SHOWN).map(g => `- Gotcha: ${g}`)
+  if (gotchas.length > MAX_SHOWN) lines.push(`- (+${gotchas.length - MAX_SHOWN} more in task-log/INDEX.md)`)
+  // one link per entry, the entries that mention this file first
+  let links = uniq(rows.flatMap(c => c[2].match(/\[[^\]]+\]\([^)]+\)/g) ?? []))
+  if (prefer?.size) links = [...links.filter(l => prefer.has(l.match(/#([^)\s]+)\)/)?.[1])), ...links.filter(l => !prefer.has(l.match(/#([^)\s]+)\)/)?.[1]))]
+  const more = links.length > MAX_LINKS ? ` · +${links.length - MAX_LINKS}` : ''
+  return [head, bcs.length ? `- Bug classes: ${bcs.join(' ')} (details in CLAUDE.md)` : null, ...lines,
+    links.length ? `- Related entries (open only what you need, never the whole shard): ${links.slice(0, MAX_LINKS).join(' · ')}${more}` : null].filter(Boolean).join('\n')
+}
+let allRows = null, shown = null
+// --- anti-spam state: once per (session, module), once per (session, file); a row already
+// delivered this session is not delivered again through another file ---
+const loadLessons = () => {
+  if (allRows) return
+  try { mkdirSync(stateDir, { recursive: true }) } catch { /* no state dir = inject every time, never crash */ }
+  try { seen = JSON.parse(readFileSync(stateFile, 'utf8')) } catch { /* fresh */ }
+  if (seen === null || typeof seen !== 'object' || Array.isArray(seen)) seen = {}
+  shown = new Set(Array.isArray(seen.__rows) ? seen.__rows : [])
+  let indexText = ''
+  try { indexText = readFileSync(join(root, 'task-log', 'INDEX.md'), 'utf8') } catch { /* unreadable INDEX = nothing to say */ }
+  // INDEX rows: split on unescaped pipes; a row counts only when it has something to say
+  allRows = indexText.split('\n')
+    .map(l => l.split(/(?<!\\)\|/).map(s => s.trim()))
+    .filter(c => c.length >= 5 && c[1] !== 'Module' && !/^:?-+:?$/.test(c[1]) && (real(c[4]) || real(c[3])))
+}
+const lessonsFor = (rel) => {
+  loadLessons()
+  const mod = moduleOf(rel)
+  // ALL rows named for the module, not the first: a real INDEX files several rows under one name.
+  const modRows = mod ? allRows.filter(c => c[1] === mod) : []
+  let fileIds = new Set()
+  // --- file-level rows: entries that mention this file → the INDEX rows linking them ---
+  // Entries name files two ways: by full path, and by bare filename. Measured on a real log,
+  // full paths reached 22% of source files; adding the bare name — only when that name is unique
+  // among tracked files, so `index.ts` never matches — reached 37%, at a median of one entry each.
+  const fileRows = () => {
+    const dir = join(root, 'task-log'), ids = new Set()
+    const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const base = rel.split('/').pop()
+    let needle = rel
+    if (base !== rel) {
+      const r = spawnSync('git', ['ls-files'], { cwd: root, encoding: 'utf8', timeout: 4000, maxBuffer: 64 * 1024 * 1024 })
+      const same = r.status === 0 ? r.stdout.split('\n').filter(f => f === base || f.endsWith('/' + base)).length : 2
+      if (same <= 1) needle = base // 0 = a file being created under a name the log already mentions
+    }
+    // whole-token match: `lib/a.ts` must not hit `xlib/a.ts` or `lib/a.tsx`
+    const re = new RegExp(`(?<![\\w.-])${needle === base ? '(?:[\\w.-]+/)*' : ''}${esc(needle)}(?![\\w-])`)
+    for (const f of readdirSync(dir).filter(f => /^\d{4}-\d{2}\.md$/.test(f))) {
+      const text = readFileSync(join(dir, f), 'utf8')
+      if (!text.includes(needle)) continue
+      const parts = text.split(/<a id="([^"]+)"><\/a>/) // [preamble, id, body, id, body, …]
+      for (let i = 1; i < parts.length; i += 2) if (re.test(parts[i + 1])) ids.add(parts[i])
+    }
+    if (!ids.size) return []
+    fileIds = ids
+    return allRows.filter(c => !modRows.includes(c) && !shown.has(rowKey(c)) && [...c[2].matchAll(/#([^)\s]+)\)/g)].some(m => ids.has(m[1])))
+  }
+  const mode = cfg.tasklog?.fileInjection ?? 'fallback'
+  const wantFile = mode === 'always' || (mode === 'fallback' && !modRows.length)
+  const fileKey = `f:${rel}`
+  const showMod = modRows.length > 0 && !seen[mod]
+  let fRows = []
+  if (wantFile && !seen[fileKey]) { try { fRows = fileRows() } catch { fRows = [] } }
+  if (!showMod && !fRows.length) {
+    log('pass', { file: rel, module: mod, reason: !mod && !wantFile ? 'no-module' : seen[mod] || seen[fileKey] ? 'seen' : 'no-row' })
+    if (wantFile && !seen[fileKey]) { seen[fileKey] = true; save() } // looked once, found nothing — don't rescan the shards on every edit of this file
+    return null
+  }
+  const parts = []
+  if (showMod) parts.push(section(modRows, `[task-log] Editing module "${mod}" — history you must know before touching it:`, c => c[4]))
+  if (fRows.length) parts.push(section(fRows, `[task-log] Earlier work touched ${rel} — lessons recorded for it:`, c => real(c[4]) ? `[${c[1]}] ${c[4]}` : null, fileIds))
+  for (const c of [...(showMod ? modRows : []), ...fRows]) shown.add(rowKey(c))
+  seen.__rows = [...shown]
+  if (showMod) seen[mod] = true
+  if (wantFile) seen[fileKey] = true
+  save()
+  log('inject', { file: rel, module: mod, via: showMod && fRows.length ? 'both' : showMod ? 'module' : 'file', rows: (showMod ? modRows.length : 0) + fRows.length })
+  return parts.join('\n\n')
+}
+// a config warning rides along with whatever else is said, once per session
+const withWarnings = (extra, more = []) => {
+  loadLessons()
+  const cw = cfgWarn && !seen.__cfg ? cfgWarn : null
+  if (cw) { seen.__cfg = true; log('warn-config'); save() }
+  return [cw, ...more, extra].filter(Boolean).join('\n\n') || undefined
+}
+
+// ============ Bash: a shell write ============
 if (!filePath) {
   if (!command) ok()
   root = rootOf(cwd)
   if (!root) ok()
   loadCfg()
   const rules = forbiddenRules()
-  if (!rules.length) ok()
   const unq = (t) => t.replace(/^["']|["']$/g, '')
   const TOK = `("[^"]+"|'[^']+'|[^\\s;|&()<>]+)`
   // Each simple command is judged with the directory it runs in: `cd lib/money && echo … > a.js`
@@ -190,22 +310,24 @@ if (!filePath) {
     for (const m of seg.matchAll(/\b(?:sed|perl)\s[^|;&]*?(?:-[a-zA-Z]*i\b|--in-place)[^|;&]*/g))
       for (const tok of m[0].match(new RegExp(TOK, 'g')) ?? []) if (!tok.startsWith('-') && !/^(sed|perl)$/.test(tok)) add(tok)
   }
-  for (const t of targets) {
-    const rel = relOf(t)
+  const rels = [...targets].map(relOf)
+  for (const rel of rels) {
     const rule = rules.find(r => r.pathRe.test(rel) && r.patRe.test(command))
     if (rule) {
       log('deny-bash-forbidden', { file: rel, pattern: rule.pattern })
       deny(`[gwork forbidden] this command writes /${rule.pattern}/ into ${rel}, which gwork.json forbids${rule.reason ? ` — ${rule.reason}` : ''}. ${FORBIDDEN_TAIL}`)
     }
   }
-  ok()
+  // the same lessons an edit of those files would get — for targets inside the repo only, and a
+  // few at most: a command that touches forty files is a build, not an edit
+  const said = rels.filter(r => !r.startsWith('/') && !r.startsWith('~') && !r.startsWith('..')).slice(0, 4).map(lessonsFor).filter(Boolean)
+  ok(said.length || cfgWarn ? withWarnings(said.join('\n\n')) : undefined)
 }
 
 // ============ Edit / Write / MultiEdit ============
 root = rootOf(dirname(resolve(cwd, filePath))) ?? rootOf(cwd)
 if (!root) ok()
 loadCfg()
-const indexPath = join(root, 'task-log', 'INDEX.md')
 const rel = relOf(filePath) // resolved: a relative file_path must still map to its module
 
 // --- sentinel: second channel of the filter stack. Independent of git hooks, so
@@ -242,118 +364,8 @@ if (existsSync(sentinelBin)) {
   }
 }
 
-// --- module key: rules come from gwork.json at the root if present — users edit rules without touching code ---
-const DEFAULT_MODULES = [
-  { pattern: '^modules/([\\w-]+)/', name: '$1' },
-  { pattern: '^(?:lib|app/actions)/([\\w-]+)', name: '(shim) $1' },
-  { pattern: '^app/(?:visit/)?([\\w-]+)/', name: 'page:$1' },
-  { pattern: '^components/([\\w-]+)/', name: 'ui:$1' },
-  { pattern: '^tests/([\\w-]+)/', name: 'test:$1' },
-  { pattern: '^(prisma|hooks|scripts)/', name: '$1' },
-]
-const moduleRules = Array.isArray(cfg.modules) && cfg.modules.length ? cfg.modules : DEFAULT_MODULES
-const moduleOf = p => {
-  for (const r of moduleRules) {
-    let m
-    if (typeof r?.pattern !== 'string') continue
-    try { m = p.match(new RegExp(r.pattern)) } catch { continue } // bad regex in config → skip, never crash the hook
-    if (m) return String(r.name ?? '').replace(/\$(\d)/g, (_, i) => m[+i] ?? '')
-  }
-  return null
-}
-const mod = moduleOf(rel)
-
-// --- anti-spam state: once per (session, module), once per (session, file), sentinel warning once per session ---
-try { mkdirSync(stateDir, { recursive: true }) } catch { /* no state dir = inject every time, never crash */ }
-let seen = {}
-try { seen = JSON.parse(readFileSync(stateFile, 'utf8')) } catch { /* fresh */ }
-if (seen === null || typeof seen !== 'object' || Array.isArray(seen)) seen = {}
-const save = () => { try { writeFileSync(stateFile, JSON.stringify(seen)) } catch { /* re-inject at worst */ } }
-const okW = (extra) => { // every exit from here on goes through okW so a pending sentinel warning is never lost
-  const warn = sentinelWarn && !seen.__sentinel ? sentinelWarn : null
-  const cw = cfgWarn && !seen.__cfg ? cfgWarn : null
-  if (warn) seen.__sentinel = true
-  if (cw) { seen.__cfg = true; log('warn-config') }
-  if (warn || cw) save()
-  ok([cw, warn, extra].filter(Boolean).join('\n\n') || undefined)
-}
-
-// --- INDEX rows: split on unescaped pipes; a row counts only when it has something to say ---
-const real = v => v && v !== 'TODO' && v !== '—' && v !== '-'
-const uniq = a => [...new Set(a.filter(real))]
-let indexText = ''
-try { indexText = readFileSync(indexPath, 'utf8') } catch { /* unreadable INDEX = nothing to say */ }
-const allRows = indexText.split('\n')
-  .map(l => l.split(/(?<!\\)\|/).map(s => s.trim()))
-  .filter(c => c.length >= 5 && c[1] !== 'Module' && !/^:?-+:?$/.test(c[1]) && (real(c[4]) || real(c[3])))
-// ALL rows named for the module, not the first: a real INDEX files several rows under one name.
-const modRows = mod ? allRows.filter(c => c[1] === mod) : []
-// a row already delivered this session is not delivered again through another file
-const rowKey = c => `${c[1]}\u0000${c[4]}`
-const shown = new Set(Array.isArray(seen.__rows) ? seen.__rows : [])
-
-// --- file-level rows: entries that mention this file → the INDEX rows linking them ---
-// Entries name files two ways: by full path, and by bare filename. Measured on a real log,
-// full paths reached 22% of source files; adding the bare name — only when that name is unique
-// among tracked files, so `index.ts` never matches — reached 37%, at a median of one entry each.
-const fileRows = () => {
-  const dir = join(root, 'task-log'), ids = new Set()
-  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const base = rel.split('/').pop()
-  let needle = rel
-  if (base !== rel) {
-    const r = spawnSync('git', ['ls-files'], { cwd: root, encoding: 'utf8', timeout: 4000, maxBuffer: 64 * 1024 * 1024 })
-    const same = r.status === 0 ? r.stdout.split('\n').filter(f => f === base || f.endsWith('/' + base)).length : 2
-    if (same <= 1) needle = base // 0 = a file being created under a name the log already mentions
-  }
-  // whole-token match: `lib/a.ts` must not hit `xlib/a.ts` or `lib/a.tsx`
-  const re = new RegExp(`(?<![\\w.-])${needle === base ? '(?:[\\w.-]+/)*' : ''}${esc(needle)}(?![\\w-])`)
-  for (const f of readdirSync(dir).filter(f => /^\d{4}-\d{2}\.md$/.test(f))) {
-    const text = readFileSync(join(dir, f), 'utf8')
-    if (!text.includes(needle)) continue
-    const parts = text.split(/<a id="([^"]+)"><\/a>/) // [preamble, id, body, id, body, …]
-    for (let i = 1; i < parts.length; i += 2) if (re.test(parts[i + 1])) ids.add(parts[i])
-  }
-  if (!ids.size) return []
-  fileIds = ids
-  return allRows.filter(c => !modRows.includes(c) && !shown.has(rowKey(c)) && [...c[2].matchAll(/#([^)\s]+)\)/g)].some(m => ids.has(m[1])))
-}
-let fileIds = new Set()
-const mode = cfg.tasklog?.fileInjection ?? 'fallback'
-const wantFile = mode === 'always' || (mode === 'fallback' && !modRows.length)
-const fileKey = `f:${rel}`
-const showMod = modRows.length > 0 && !seen[mod]
-let fRows = []
-if (wantFile && !seen[fileKey]) { try { fRows = fileRows() } catch { fRows = [] } }
-
-if (!showMod && !fRows.length) {
-  log('pass', { file: rel, module: mod, reason: !mod && !wantFile ? 'no-module' : seen[mod] || seen[fileKey] ? 'seen' : 'no-row' })
-  if (wantFile) { seen[fileKey] = true; save() } // looked once, found nothing — don't rescan the shards on every edit of this file
-  okW()
-}
-
-// Budget: the harness caps injected context at 10,000 characters, and one real INDEX row held
-// 8,000 characters of links alone. 12 gotchas and 8 links per section stay near 2,500.
-const MAX_SHOWN = 12, MAX_LINKS = 8
-const section = (rows, head, label, prefer) => {
-  const gotchas = uniq(rows.map(label)), bcs = uniq(rows.flatMap(c => c[3].split(/\s+/)))
-  const lines = gotchas.slice(0, MAX_SHOWN).map(g => `- Gotcha: ${g}`)
-  if (gotchas.length > MAX_SHOWN) lines.push(`- (+${gotchas.length - MAX_SHOWN} more in task-log/INDEX.md)`)
-  // one link per entry, the entries that mention this file first
-  let links = uniq(rows.flatMap(c => c[2].match(/\[[^\]]+\]\([^)]+\)/g) ?? []))
-  if (prefer?.size) links = [...links.filter(l => prefer.has(l.match(/#([^)\s]+)\)/)?.[1])), ...links.filter(l => !prefer.has(l.match(/#([^)\s]+)\)/)?.[1]))]
-  const more = links.length > MAX_LINKS ? ` · +${links.length - MAX_LINKS}` : ''
-  return [head, bcs.length ? `- Bug classes: ${bcs.join(' ')} (details in CLAUDE.md)` : null, ...lines,
-    links.length ? `- Related entries (open only what you need, never the whole shard): ${links.slice(0, MAX_LINKS).join(' · ')}${more}` : null].filter(Boolean).join('\n')
-}
-const parts = []
-if (showMod) parts.push(section(modRows, `[task-log] Editing module "${mod}" — history you must know before touching it:`, c => c[4]))
-if (fRows.length) parts.push(section(fRows, `[task-log] Earlier work touched ${rel} — lessons recorded for it:`, c => real(c[4]) ? `[${c[1]}] ${c[4]}` : null, fileIds))
-for (const c of [...(showMod ? modRows : []), ...fRows]) shown.add(rowKey(c))
-seen.__rows = [...shown]
-
-if (showMod) seen[mod] = true
-if (wantFile) seen[fileKey] = true
-save()
-log('inject', { file: rel, module: mod, via: showMod && fRows.length ? 'both' : showMod ? 'module' : 'file', rows: (showMod ? modRows.length : 0) + fRows.length })
-okW(parts.join('\n\n'))
+const text = lessonsFor(rel)
+// every exit from here goes through withWarnings so a pending sentinel or config warning is never lost
+const sw = sentinelWarn && !seen.__sentinel ? sentinelWarn : null
+if (sw) { seen.__sentinel = true; save() }
+ok(withWarnings(text, [sw]))

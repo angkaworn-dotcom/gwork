@@ -4,6 +4,15 @@ Append-only, newest first. Every entry = a bug the kit hit in a real repo, fixed
 
 Format: `## L-xxx — <one-line symptom>` · date · repo · Root cause · Fix · Harness.
 
+## L-015 — an agent that never uses the edit tools never gets a gotcha
+
+- **Date:** 2026-11-11 · **Repo:** e2e sandboxes, seven scenarios run by real agents (results in `e2e/scenarios.md`)
+- **Symptom:** in S3 the agent followed the money gotcha and passed — but the hook log held no line for that run. Asked how it wrote its files, it answered: every one through the shell (`cat > f <<EOF`, a python one-liner), none through Edit or Write.
+- **Root cause:** lessons were attached to `Edit|Write|MultiEdit` only. A model that prefers the shell bypasses the whole injection path without trying to; it complied only because CLAUDE.md told it to read INDEX itself.
+- **Fix:** the lookup is now one function used by both branches. A shell write whose target is inside the repo (redirect, heredoc, `tee`, `sed -i`, after a leading `cd`) gets the same module and file lessons an edit would, once per session, at most four targets per command. A file written by a script (`python -c`) still gets nothing — the command line does not name it reliably.
+- **Also found:** the e2e verifier failed S3 for a comment that named `.toFixed()` above correct code; it now strips comments first. And the edge suite asked `setup.mjs` for sandbox "30", which is a count — it had been building thirty repos per run.
+- **Harness:** `node e2e/tools/unit-edge.mjs` 341/341 with six cases for lessons on shell writes. Panel: 5 of 7 pass; the two that fail stopped and asked instead of proceeding, with nothing forbidden written.
+
 ## L-014 — 65 of 336 odd cases failed: the kit had only ever been tested with input it expected
 
 - **Date:** 2026-11-11 · **Repo:** gwork itself (edge-case pass, `e2e/tools/unit-edge.mjs`)

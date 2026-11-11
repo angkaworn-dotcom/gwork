@@ -363,6 +363,64 @@ sh('git config core.hooksPath .husky', IR)
 const inst4 = install()
 ok('install-refuses-foreign-hookspath', inst4.status === 1 && /already "\.husky"/.test(inst4.stderr) && sh('git config core.hooksPath', IR)?.trim() === '.husky')
 
+// --- drift: another checkout of the kit is source, not an install ---
+const kitRun = run(['node', DRIFT, '--repo', KIT, '--json'], KIT, { GWORK_CLAUDE_HOME: IC })
+ok('drift-kit-checkout-is-not-an-install', (() => { try { const j = JSON.parse(kitRun.stdout); return j.repo === null && !j.drift.some(r => r.group === 'repo') } catch { return false } })(), kitRun.stdout.slice(0, 160))
+
+// --- check G2: a real gotcha may not be blanked without the owner; promotion to a BC is fine ---
+sh('git reset -q --hard origin/main', R3)
+const idxG = readFileSync(idx3Path, 'utf8')
+const moneyRow = idxG.split('\n').find(l => l.includes('(shim) money'))
+const withRow = (cells) => idxG.replace(moneyRow, moneyRow.split('|').map((c, i) => cells[i] ?? c).join('|'))
+writeFileSync(idx3Path, withRow({ 4: ' — ' })); commit('docs: tidy index')
+ok('check-G2-blocks-blanked-gotcha', /^\s*G \(shim\) money: gotcha .* was blanked/m.test(errs()), errs().slice(0, 200))
+sh('git reset -q --hard origin/main', R3)
+writeFileSync(idx3Path, withRow({ 4: ' — ' })); commit('docs: tidy index\n\nGwork-Owner-Approved: superseded')
+ok('check-G2-allows-owner-approved-blanking', !/^\s*G /m.test(errs()))
+sh('git reset -q --hard origin/main', R3)
+writeFileSync(idx3Path, withRow({ 3: ' BC-001 ', 4: ' — ' })); commit('docs: promote to BC')
+ok('check-G2-allows-promotion-to-BC', !/^\s*G /m.test(errs()))
+
+// --- check H exemptions: an owner-approved late entry, and a brand-new shard (bulk import) ---
+sh('git reset -q --hard origin/main', R3)
+writeFileSync(shard3, readFileSync(shard3, 'utf8') + '\n<a id="2026-07-13"></a>\n## 2026-07-13 — logged late\n')
+commit('docs: late entry\n\nGwork-Owner-Approved: logged after the fact')
+ok('check-H-allows-owner-approved-late-entry', !/^\s*H /m.test(errs()))
+sh('git reset -q --hard origin/main', R3)
+writeFileSync(join(R3, 'task-log/2026-01.md'), '<a id="2026-01-05"></a>\n## 2026-01-05 — imported\n')
+sh('git add task-log/2026-01.md', R3); commit('docs: import old shard')
+ok('check-H-exempts-a-new-shard', !/^\s*H /m.test(errs()))
+sh('git reset -q --hard origin/main', R3)
+
+// --- migrate: a real CRLF log becomes shards + an INDEX the checker accepts ---
+const MG = join(SB, 'migrate-repo')
+rmSync(MG, { recursive: true, force: true }); mkdirSync(MG, { recursive: true })
+writeFileSync(join(MG, 'old log.md'), ['# log', '', '## 2026-03-02 — first', 'touched `lib/money/format.ts`, see BC-004', '', '## 2026-03-02 — second same day', 'touched modules/visit/save.ts', '', '## 2026-04-10 (2) — numbered', 'no paths here', ''].join('\r\n'))
+const mig2 = run(['node', join(KIT, 'scripts/migrate.mjs'), 'old log.md'], MG)
+const migIdx = existsSync(join(MG, 'task-log/INDEX.md')) ? readFileSync(join(MG, 'task-log/INDEX.md'), 'utf8') : ''
+ok('migrate-splits-a-crlf-log', mig2.status === 0 && /parsed 3 entries/.test(mig2.stdout) && existsSync(join(MG, 'task-log/2026-03.md')) && existsSync(join(MG, 'task-log/2026-04.md')), mig2.stdout.slice(0, 120))
+ok('migrate-index-maps-modules-and-ids', /\| \(shim\) money \| \[2026-03-02\]/.test(migIdx) && /BC-004/.test(migIdx) && /\| visit \| \[2026-03-02-a\]/.test(migIdx) && /\| misc \| \[2026-04-10-2\]/.test(migIdx), migIdx.slice(-300))
+copyFileSync(join(KIT, 'scripts/tasklog-check.mjs'), join(MG, 'tasklog-check.mjs'))
+const migCheck = run(['node', 'tasklog-check.mjs'], MG)
+ok('migrate-output-passes-the-checker', migCheck.status === 0, (migCheck.stdout + migCheck.stderr).slice(0, 200))
+ok('migrate-leaves-the-source-untouched', readFileSync(join(MG, 'old log.md'), 'utf8').includes('\r\n## 2026-04-10 (2)'))
+
+// --- sentinel: install copies the script; a snapshot from before pre-commit was watched still verifies ---
+const SH = join(SB, 'sentinel-home')
+rmSync(SH, { recursive: true, force: true })
+copyFileSync(join(KIT, 'scripts/gwork-sentinel.mjs'), join(R3, 'scripts/gwork-sentinel.mjs'))
+const sEnv = { GWORK_HOME: SH, CLAUDECODE: '', CLAUDE_CODE_ENTRYPOINT: '' }
+const sRun = (...a) => run(['node', 'scripts/gwork-sentinel.mjs', ...a], R3, sEnv)
+ok('sentinel-install-copies-the-script', sRun('install').status === 0 && existsSync(join(SH, 'bin/gwork-sentinel.mjs')))
+ok('sentinel-verify-before-init-is-not-installed', sRun('verify').status === 0 && /not installed/.test(sRun('verify').stdout))
+ok('sentinel-init-with-owner-hash', run(['node', 'scripts/gwork-sentinel.mjs', 'init'], R3, { ...sEnv, GWORK_SENTINEL_CONFIRM: sRun('hash').stdout.trim() }).status === 0 && sRun('verify').status === 0)
+const snapFile = join(SH, 'sentinel', readdirSync(join(SH, 'sentinel')).find(f => f.endsWith('.json')))
+const snapOld = JSON.parse(readFileSync(snapFile, 'utf8')); delete snapOld.state.files['githooks/pre-commit']
+rmSync(join(R3, 'githooks/pre-commit')); writeFileSync(snapFile, JSON.stringify(snapOld))
+ok('sentinel-older-snapshot-without-pre-commit-still-verifies', sRun('verify').status === 0, sRun('verify').stderr.slice(0, 160))
+sh('git checkout -q -- githooks/pre-commit', R3); rmSync(join(R3, 'scripts/gwork-sentinel.mjs'))
+ok('sentinel-flags-pre-commit-appearing', run(['node', join(SH, 'bin/gwork-sentinel.mjs'), 'verify', '--repo', R3], R3, sEnv).status === 2)
+
 // --- machine-only: no repo needed, nothing written outside the Claude home ---
 const IC2 = join(SB, 'install-claude-2')
 rmSync(IC2, { recursive: true, force: true })

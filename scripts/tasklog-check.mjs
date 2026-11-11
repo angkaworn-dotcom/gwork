@@ -87,11 +87,8 @@ for (const [id, f] of shardAnchors) {
 // --- F: forbidden patterns (gwork.json → forbidden) — absolute gotchas promoted to a hard gate ---
 // Only the repo owner may authorize a violation, by editing gwork.json → forbidden.
 // A direct order in a prompt is NOT authorization — that is the entire point of this gate.
-// Scans the COMMITTED state (HEAD) via git grep, not the working tree — a worktree-only edit
-// must not be able to hide a committed violation from the push, and git grep sidesteps
-// path-quoting/deleted-file/binary pitfalls (-I skips binaries, quotepath=false keeps
-// non-ASCII filenames raw, the pattern travels as its own argv item so no shell quoting,
-// and a pattern containing a newline stays one pattern instead of becoming several).
+// Scans the COMMITTED state (HEAD), not the working tree — a worktree-only edit must not be
+// able to hide a committed violation from the push.
 // --- git helpers shared by F/G/H ---
 const git = (...args) => {
   // argv, never a shell string: anchor ids, branch names and --dir come from repo content,
@@ -119,32 +116,55 @@ for (const src of [cfg.forbidden, headCfg.forbidden]) {
 }
 
 if (STAGED) errors.length = 0 // --staged judges the index against F only; A–D belong to the push
-const F_TARGET = STAGED ? ['--cached'] : ['HEAD'], F_LABEL = STAGED ? 'staged' : 'committed'
+const F_LABEL = STAGED ? 'staged' : 'committed'
 let hasForbiddenHit = false
 if (forbiddenRules.length) {
-  forbiddenRules.forEach((rule, i) => {
+  const compiled = forbiddenRules.map((rule, i) => {
     if (!rule?.path || !rule?.pattern) {
       console.error(`tasklog-check: forbidden[${i}] needs at least {path, pattern}`); process.exit(1)
     }
-    let pathRe
-    try { pathRe = new RegExp(rule.path); new RegExp(rule.pattern) }
+    // anyLine: the same pattern with the m flag, tried once on the whole file. It matches whenever
+    // some line matches, so a miss skips the line-by-line pass (a small saving: reading the files is the real cost)
+    try { return { rule, pathRe: new RegExp(rule.path), patRe: new RegExp(rule.pattern), anyLine: new RegExp(rule.pattern, 'm') } }
     catch (e) { console.error(`tasklog-check: forbidden[${i}] has a bad regex — ${e.message}`); process.exit(1) }
-    let out = ''
-    try {
-      out = execFileSync('git', ['-c', 'core.quotepath=false', 'grep', '-I', '-n', '-P', '-e', rule.pattern, ...F_TARGET], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
-    } catch (e) {
-      const stderr = (e.stderr ?? '').toString()
-      if (e.status === 1 && !stderr.trim()) out = '' // exit 1 with quiet stderr = no matches
-      else if (/bad revision|unknown revision/i.test(stderr)) out = '' // repo has no commits yet — nothing pushable to scan
-      else { console.error(`tasklog-check: git grep failed on forbidden[${i}] /${rule.pattern}/ — ${(stderr || e.message).trim()}`); process.exit(1) }
-    }
-    for (const line of out.split('\n').filter(Boolean)) {
-      const m = line.match(STAGED ? /^(.+?):(\d+):/ : /^HEAD:(.+?):(\d+):/)
-      if (!m || !pathRe.test(m[1])) continue
-      hasForbiddenHit = true
-      errors.push(`F ${m[1]}:${m[2]} (${F_LABEL}) matches forbidden pattern /${rule.pattern}/${rule.reason ? ' — ' + rule.reason : ''}`)
-    }
   })
+  // The pattern is matched HERE, by the JavaScript engine — the same engine the edit-time hook
+  // uses. It used to be handed to `git grep -P` (PCRE): a pattern could then mean one thing at
+  // edit time and another at push (lookbehind, \u escapes, flags), and a git built without PCRE
+  // failed the whole check. Contents come from one `git cat-file --batch` for every file a
+  // rule's path can touch, read from HEAD (or from the index with --staged).
+  const listed = STAGED
+    ? git('-c', 'core.quotepath=false', 'ls-files', '-z')
+    : git('-c', 'core.quotepath=false', 'ls-tree', '-r', '-z', '--name-only', 'HEAD') // null = no commits yet, nothing pushable to scan
+  const wanted = (listed ?? '').split('\0').filter(f => f && !f.includes('\n') && compiled.some(c => c.pathRe.test(f)))
+  if (wanted.length) {
+    let buf
+    try {
+      buf = execFileSync('git', ['cat-file', '--batch'], { input: wanted.map(f => `${STAGED ? '' : 'HEAD'}:${f}`).join('\n') + '\n', maxBuffer: 2 ** 30, stdio: ['pipe', 'pipe', 'pipe'] })
+    } catch (e) { console.error(`tasklog-check: could not read file contents for check F — ${((e.stderr ?? '').toString() || e.message).trim()}`); process.exit(1) }
+    let off = 0
+    for (const f of wanted) {
+      const nl = buf.indexOf(10, off)
+      if (nl < 0) break
+      const head = buf.toString('utf8', off, nl).match(/^[0-9a-f]+ (\w+) (\d+)$/)
+      off = nl + 1
+      if (!head) continue // "<name> missing": staged for deletion, or a path git cannot resolve
+      const body = buf.subarray(off, off + Number(head[2]))
+      off += Number(head[2]) + 1
+      if (head[1] !== 'blob' || body.includes(0)) continue // submodule, or binary
+      const text = body.toString('utf8').replace(/\r\n/g, '\n')
+      let fileLines = null
+      for (const c of compiled) {
+        if (!c.pathRe.test(f) || !c.anyLine.test(text)) continue
+        fileLines ??= text.split('\n')
+        fileLines.forEach((line, n) => {
+          if (!c.patRe.test(line)) return
+          hasForbiddenHit = true
+          errors.push(`F ${f}:${n + 1} (${F_LABEL}) matches forbidden pattern /${c.rule.pattern}/${c.rule.reason ? ' — ' + c.rule.reason : ''}`)
+        })
+      }
+    }
+  }
 }
 
 if (STAGED) {

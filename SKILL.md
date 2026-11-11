@@ -49,7 +49,7 @@ git commit --allow-empty -m "bad"         # must be blocked by commit-msg (then 
 ```
 Test the hook: edit a file in a module that has a gotcha in INDEX → injection appears the first time, silent the second time.
 `node <SKILL>/scripts/gwork-drift.mjs --repo <REPO>` must report every copy as matching. After a week of use, `node <SKILL>/scripts/gwork-stats.mjs` shows what the hooks actually delivered.
-If the sentinel is installed, `node e2e/tools/unit.mjs` from the kit exercises it end-to-end (106 deterministic cases).
+If the sentinel is installed, `node e2e/tools/unit.mjs` from the kit exercises it end-to-end (113 deterministic cases).
 
 ## Self-repair — the kit fixes itself when it breaks in the field
 

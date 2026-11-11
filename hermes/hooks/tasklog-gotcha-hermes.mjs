@@ -81,8 +81,11 @@ const DEFAULT_MODULES = [
   { pattern: '^tests/([\\w-]+)/', name: 'test:$1' },
   { pattern: '^(prisma|hooks|scripts)/', name: '$1' },
 ]
-let cfg = {}
-try { cfg = JSON.parse(readFileSync(join(root, 'gwork.json'), 'utf8')) } catch { /* no config = defaults */ }
+let cfg = {}, cfgWarn = null
+try { cfg = JSON.parse(readFileSync(join(root, 'gwork.json'), 'utf8')) }
+catch (e) { // absent = defaults; present but unparseable = say so once, the forbidden rules are not applying
+  if (existsSync(join(root, 'gwork.json'))) cfgWarn = `[gwork] gwork.json cannot be parsed (${e.message}). Until it is fixed the forbidden rules are NOT checked at edit time, and commit and push will be blocked. Fix the file, then re-issue your tool call.`
+}
 
 // --- forbidden content, enforced at EDIT time (not just at push via check F) ---
 // Answer to the S11 `git push --no-verify` hole: --no-verify skips git's pre-push hook
@@ -117,6 +120,11 @@ mkdirSync(stateDir, { recursive: true })
 const stateFile = join(stateDir, `${sessionId}.json`)
 let seen = {}
 try { seen = JSON.parse(readFileSync(stateFile, 'utf8')) } catch { /* fresh */ }
+if (cfgWarn && !seen.__cfg) {
+  seen.__cfg = true
+  writeFileSync(stateFile, JSON.stringify(seen))
+  block(cfgWarn)
+}
 if (sentinelGuardsWarn && !seen.__sentinel) {
   seen.__sentinel = true
   writeFileSync(stateFile, JSON.stringify(seen))

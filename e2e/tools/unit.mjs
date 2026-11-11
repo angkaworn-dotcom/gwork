@@ -363,6 +363,35 @@ sh('git config core.hooksPath .husky', IR)
 const inst4 = install()
 ok('install-refuses-foreign-hookspath', inst4.status === 1 && /already "\.husky"/.test(inst4.stderr) && sh('git config core.hooksPath', IR)?.trim() === '.husky')
 
+// --- check F and the edit hook judge a pattern with the SAME engine ---
+// a variable-length lookbehind is valid JavaScript and invalid PCRE: under `git grep -P` this rule
+// made the whole check fail, while the edit hook enforced it
+sh('git reset -q --hard origin/main', R3)
+const cfgF = JSON.parse(readFileSync(cfg3Path, 'utf8'))
+writeCfg({ ...cfgF, forbidden: [...cfgF.forbidden, { path: '^lib/pay/', pattern: '(?<=amount\\s*\\.\\s*)round\\($', reason: 'js-only syntax' }] })
+mkdirSync(join(R3, 'lib/pay'), { recursive: true })
+writeFileSync(join(R3, 'lib/pay/a.js'), 'const ok = 1\r\nconst x = amount . round(\r\n  2)\r\n')
+writeFileSync(join(R3, 'lib/pay/blob.bin'), Buffer.from([0x61, 0x00, 0x62]))
+sh('git add -A', R3); commit('feat: pay')
+let fOut = errs()
+ok('check-F-uses-the-js-engine', /^\s*F lib\/pay\/a\.js:2 \(committed\) matches forbidden pattern/m.test(fOut) && !/could not read|git grep failed/.test(fOut), fOut.slice(0, 200))
+ok('check-F-skips-binary-files', !/blob\.bin/.test(fOut))
+o = feed(CL, { tool_name: 'Write', tool_input: { file_path: `${R3}/lib/pay/b.js`, content: 'amount.round(' }, cwd: R3, session_id: u('eng') })
+ok('edit-hook-agrees-with-check-F', /"permissionDecision":"deny"/.test(o), o.slice(0, 120))
+sh('git rm -q --cached lib/pay/a.js', R3)
+const stagedDel = run(['node', 'scripts/tasklog-check.mjs', '--staged'], R3)
+ok('check-F-staged-ignores-a-deleted-file', stagedDel.status === 0, stagedDel.stderr.slice(0, 160))
+sh('git reset -q --hard origin/main && git clean -fdq', R3)
+
+// --- a gwork.json that cannot be parsed is said out loud at edit time, once ---
+writeFileSync(cfgPath, '{ "forbidden": [')
+const sBroken = u('broken')
+o = ctxOf(edit(CL, 'lib/whatever.js', sBroken))
+ok('edit-hook-warns-on-broken-config', /gwork\.json cannot be parsed/.test(o) && /NOT checked/.test(o), o.slice(0, 160))
+ok('edit-hook-warns-on-broken-config-once', edit(CL, 'lib/whatever2.js', sBroken).trim() === '')
+ok('hermes-hook-blocks-once-on-broken-config', /"action":"block"/.test(edit(HE, 'lib/whatever.js', u('hbroken'))))
+writeFileSync(cfgPath, cfgSrc)
+
 // --- drift: another checkout of the kit is source, not an install ---
 const kitRun = run(['node', DRIFT, '--repo', KIT, '--json'], KIT, { GWORK_CLAUDE_HOME: IC })
 ok('drift-kit-checkout-is-not-an-install', (() => { try { const j = JSON.parse(kitRun.stdout); return j.repo === null && !j.drift.some(r => r.group === 'repo') } catch { return false } })(), kitRun.stdout.slice(0, 160))

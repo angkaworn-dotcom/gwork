@@ -38,8 +38,10 @@ const act = (what, fn) => { done.push(what); if (!DRY) fn() }
 
 // which existing copies were edited in place — the drift detector already knows
 const driftRun = spawnSync('node', [join(KIT, 'scripts', 'gwork-drift.mjs'), '--repo', REPO, '--json'], { encoding: 'utf8', env: process.env })
-const edited = new Set()
-try { for (const r of JSON.parse(driftRun.stdout).drift) if (r.state === 'local edit') edited.add(`${r.group}:${r.file}`) } catch { /* no report = treat nothing as edited */ }
+// "differs" = a shallow kit that cannot rule out an in-place fix: treated as edited, because
+// overwriting a real fix is the one mistake this installer exists to prevent
+const edited = new Map()
+try { for (const r of JSON.parse(driftRun.stdout).drift) if (r.state === 'local edit' || r.state === 'differs') edited.set(`${r.group}:${r.file}`, r.state) } catch { /* no report = treat nothing as edited */ }
 
 const same = (a, b) => { try { return readFileSync(a, 'utf8').replace(/\r\n/g, '\n') === readFileSync(b, 'utf8').replace(/\r\n/g, '\n') } catch { return false } }
 const place = (group, kitRel, dest, { exec = false } = {}) => {
@@ -50,7 +52,9 @@ const place = (group, kitRel, dest, { exec = false } = {}) => {
     return
   }
   if (existsSync(dest) && edited.has(`${group}:${kitRel}`) && !FORCE) {
-    skipped.push(`${dest} — edited in place (matches no kit version). Move that fix into the kit, or pass --force to overwrite it.`)
+    skipped.push(edited.get(`${group}:${kitRel}`) === 'differs'
+      ? `${dest} — differs from the kit, and the kit is a shallow clone, so it cannot be told whether this copy is merely old or was edited in place. Run \`git fetch --unshallow\` in the kit and retry, or pass --force.`
+      : `${dest} — edited in place (matches no kit version). Move that fix into the kit, or pass --force to overwrite it.`)
     return
   }
   act(`${existsSync(dest) ? 'update' : 'copy'}: ${kitRel} → ${dest}`, () => {

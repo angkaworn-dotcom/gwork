@@ -23,6 +23,16 @@ Not a TypeScript repo? Swap in your stack's build/lint commands.
 ```
 `maxGotcha` = max length of the Gotcha column · `bcGotchaMax` = ceiling once the row has a BC (promote and trim)
 
+Two more keys under `tasklog`, both read by `hooks/tasklog-gotcha.mjs`:
+- `fileInjection`: `"fallback"` (default) — when the edited file's module has no INDEX row, inject the rows whose entries mention that file (by full path, or by bare filename when it is unique in the repo) · `"always"` — do both every time · `false` — module lookup only
+- `unclosedCommits`: `3` (default) — at session start, say once when this many commits have landed since the last task-log entry · `0` turns it off
+
+### `log` — the hooks' decision log
+```json
+"log": false
+```
+Every inject, pass and deny of the gotcha hook is appended to `~/.gwork/log/<YYYY-MM>.jsonl` (local only; read it with `scripts/gwork-stats.mjs`). `false` turns it off for this repo; `GWORK_LOG=0` turns it off for a shell.
+
 ### `forbidden` — absolute prohibitions as a hard gate (checked by tasklog-check in pre-push)
 ```json
 "forbidden": [

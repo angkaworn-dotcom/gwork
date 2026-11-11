@@ -17,31 +17,18 @@ Let `<SKILL>` = this skill folder, `<REPO>` = the target repo.
 
 1. **Create `gwork.json` at the repo root matching its structure** — copy from `gwork.example.json` and edit per [ADAPT.md](ADAPT.md).
    All rules (commit types, prepush checks, gotcha limits, module mapping) live in this one file; users edit it freely without touching code. No file = defaults (Osaki Hub Evo layout) · broken config = every gate fails loud.
-2. **Copy the skeleton:**
+2. **Run the installer** — it does every mechanical step and prints what is left:
    ```bash
-   cp -r <SKILL>/githooks <REPO>/githooks
-   mkdir -p <REPO>/scripts
-   cp <SKILL>/scripts/tasklog-check.mjs <SKILL>/scripts/migrate.mjs <REPO>/scripts/
-   cd <REPO> && git config core.hooksPath githooks && chmod +x githooks/*
+   node <SKILL>/scripts/gwork-install.mjs --repo <REPO> --dry-run     # read what it would do
+   node <SKILL>/scripts/gwork-install.mjs --repo <REPO>               # repo half
+   node <SKILL>/scripts/gwork-install.mjs --repo <REPO> --machine     # once per machine: ~/.claude hooks, commands, profiles, settings.json
    ```
-   On Linux/macOS git **silently skips** a hook file without the executable bit — only a `hint:` line, the push goes through. After `git add githooks`, `git ls-files -s githooks` must show `100755` (Windows checkout: `git update-index --chmod=+x githooks/pre-push githooks/commit-msg`).
-   Check the repo's `.gitignore` covers none of the copied paths (`git check-ignore scripts/tasklog-check.mjs githooks/pre-push task-log/INDEX.md`) — a repo that ignores `/scripts/` silently unstages the checker (L-002: dir-level ignore also defeats `!negation`; change to `/scripts/*` + `!/scripts/tasklog-check.mjs`).
-3. **task-log:**
-   - Existing log (entries headed `## YYYY-MM-DD — title`): `node scripts/migrate.mjs "<log file>"` → produces `task-log/` (source file untouched)
-   - None: create `task-log/INDEX.md` (empty table header `| Module | Entries (latest first) | BC | Gotcha (≤1 line) |`) + an empty `task-log/<YYYY-MM>.md`
-4. **Slash commands (once per machine):** `cp <SKILL>/commands/*.md ~/.claude/commands/` → gives `/gwork-log` `/gwork-check` `/gwork-rule` `/gwork-import` `/gwork-status` `/gwork-update`
-5. **PreToolUse hook (once per machine):** copy `hooks/tasklog-gotcha.mjs` → `~/.claude/hooks/` and add to `~/.claude/settings.json` (merge into existing hooks, don't overwrite):
-   ```json
-   "PreToolUse": [ { "matcher": "Edit|Write|MultiEdit",
-     "hooks": [{ "type": "command", "command": "node \"<HOME>/.claude/hooks/tasklog-gotcha.mjs\"", "timeout": 15 }] } ]
-   ```
-   `<HOME>` = the absolute home path with forward slashes (`/home/me`, `C:/Users/me`) — `~` is not expanded here.
-   The hook finds `task-log/INDEX.md` by walking up from cwd — one global copy serves every repo with the kit installed.
-5b. **Per-model profiles (once per machine, optional but recommended):** copy `hooks/model-profile.mjs` → `~/.claude/hooks/` and `profiles/` → `~/.claude/gwork-profiles/`, then register the same command under **six** events in `~/.claude/settings.json` — `SessionStart`, `UserPromptSubmit`, `SubagentStart`, `PreToolUse`, `Stop`, `PostModelSwitch` (merge, don't overwrite; no `matcher`; the `PreToolUse` entry goes alongside the `tasklog-gotcha` one, never instead of it):
-   ```json
-   "<Event>": [ { "hooks": [{ "type": "command", "command": "node \"<HOME>/.claude/hooks/model-profile.mjs\"", "timeout": 10 }] } ]
-   ```
-   Injects the matching `profiles/<model>.md` once per model per session; a minor revision with no file of its own reads its family's (`fable-5-2` → `fable-5.md`); unknown model = nothing injected. Per-repo opt-out: `"profiles": false` in gwork.json. `PostModelSwitch` (Claude Code 2.1.251+) is the documented channel for a mid-session `/model` switch; the other events cover the session's first model and older builds — why: LESSONS L-005, L-007. Prompt layer only, it blocks nothing.
+   Repo half: copies `githooks/{pre-push,commit-msg,pre-commit}` (executable) and `scripts/{tasklog-check,migrate}.mjs`, sets `core.hooksPath`, creates an empty `task-log/`, warns when `.gitignore` hides a copied file (L-002).
+   Machine half: copies the two hooks, the slash commands and the profiles, and registers the hooks in `~/.claude/settings.json` — adding what is missing, leaving every other entry alone, keeping the previous file as `settings.json.gwork-bak`.
+   It is idempotent, stages nothing, and **refuses** two things: a `core.hooksPath` that already points elsewhere, and a copy that was edited in place (exit 2 — that copy holds a fix the kit never received; move it into the kit first, L-008).
+3. **Existing log?** (entries headed `## YYYY-MM-DD — title`) Delete the empty `task-log/` the installer made and run `node scripts/migrate.mjs "<log file>"` (source file untouched).
+4. **Executable bit in the index:** after `git add githooks`, `git ls-files -s githooks` must show `100755` — git on Linux/macOS skips a non-executable hook with only a `hint:` line (L-006). From Windows: `git update-index --chmod=+x githooks/*`.
+5. **What the machine half registers** (for reading `settings.json`, not for typing): `tasklog-gotcha.mjs` on `PreToolUse` (`Edit|Write|MultiEdit|Bash`) and `SessionStart`; `model-profile.mjs` on `SessionStart`, `UserPromptSubmit`, `SubagentStart`, `PreToolUse`, `Stop`, and `PostModelSwitch` when Claude Code is 2.1.251+ (why six: L-005, L-007). Per-repo opt-out of profiles: `"profiles": false` in gwork.json. Both are prompt-layer; neither is a gate except the two denies in the gotcha hook (forbidden content, sentinel).
 6. **CLAUDE.md:** use `CLAUDE.template.md` as the skeleton — fill `<PROJECT_NAME>`, commands, SSOT, then **move long gotchas from the old CLAUDE.md into Known Bug Classes (one line per BC-xxx)**. Keep existing architecture/project specifics; cut only rules the hooks now enforce.
 7. **Sentinel (optional, recommended when an agent runs the repo autonomously):** tamper-detector for the enforcement machinery itself — snapshots the hooks/checker/`core.hooksPath`/guards outside the repo and blocks a push (and denies edits) if any of them drifts from the owner's snapshot.
    Installation splits by trust: the **agent does the mechanics**, the **owner does the attestation** — `init`/`update` refuse from an agent shell (`CLAUDECODE` marker) even with the correct hash, precisely so an agent cannot attest to machinery it just modified.
@@ -60,7 +47,8 @@ node scripts/tasklog-check.mjs            # must be green
 git commit --allow-empty -m "bad"         # must be blocked by commit-msg (then reset)
 ```
 Test the hook: edit a file in a module that has a gotcha in INDEX → injection appears the first time, silent the second time.
-If the sentinel is installed, `node e2e/tools/unit.mjs` from the kit exercises it end-to-end (56 deterministic cases).
+`node <SKILL>/scripts/gwork-drift.mjs --repo <REPO>` must report every copy as matching. After a week of use, `node <SKILL>/scripts/gwork-stats.mjs` shows what the hooks actually delivered.
+If the sentinel is installed, `node e2e/tools/unit.mjs` from the kit exercises it end-to-end (90 deterministic cases).
 
 ## Self-repair — the kit fixes itself when it breaks in the field
 

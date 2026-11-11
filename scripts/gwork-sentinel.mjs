@@ -14,7 +14,7 @@
  *   - The bolted-down upgrade (owner commit signature) stays on the ROADMAP.
  *
  * Protected state (per repo):
- *   machinery — sha256 of githooks/pre-push, githooks/commit-msg,
+ *   machinery — sha256 of githooks/pre-push, githooks/commit-msg, githooks/pre-commit,
  *               scripts/tasklog-check.mjs, scripts/gwork-sentinel.mjs,
  *               plus the value of `git config core.hooksPath`
  *   guards    — sha256 of gwork.json's {forbidden, prepush} sections
@@ -52,7 +52,7 @@ const repoKey = sha(REPO.replace(/\\/g, '/').toLowerCase()).slice(0, 16)
 const SNAP = join(HOME, 'sentinel', `${repoKey}.json`)
 const JOURNAL = join(HOME, 'sentinel', `${repoKey}.journal`)
 
-const MACHINERY_FILES = ['githooks/pre-push', 'githooks/commit-msg', 'scripts/tasklog-check.mjs', 'scripts/gwork-sentinel.mjs']
+const MACHINERY_FILES = ['githooks/pre-push', 'githooks/commit-msg', 'githooks/pre-commit', 'scripts/tasklog-check.mjs', 'scripts/gwork-sentinel.mjs']
 
 function currentState() {
   const files = {}
@@ -72,7 +72,8 @@ const stateHash = (st) => sha(JSON.stringify(st))
 
 function diffState(old, cur) {
   const machinery = [], guardsChanged = []
-  for (const f of MACHINERY_FILES) if (old.files[f] !== cur.files[f]) machinery.push(`${f}: ${old.files[f] === 'MISSING' ? 'appeared' : cur.files[f] === 'MISSING' ? 'DELETED' : 'content changed'}`)
+  // a file this version started watching is absent from older snapshots — that is not a change
+  for (const f of MACHINERY_FILES) if ((old.files[f] ?? 'MISSING') !== cur.files[f]) machinery.push(`${f}: ${(old.files[f] ?? 'MISSING') === 'MISSING' ? 'appeared' : cur.files[f] === 'MISSING' ? 'DELETED' : 'content changed'}`)
   if (old.hooksPath !== cur.hooksPath) machinery.push(`core.hooksPath: "${old.hooksPath}" → "${cur.hooksPath}"`)
   if (old.guards !== cur.guards) guardsChanged.push('gwork.json {forbidden, prepush} changed vs snapshot')
   return { machinery, guardsChanged }

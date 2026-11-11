@@ -65,9 +65,9 @@ const hooksPath = git(REPO, 'config', 'core.hooksPath')?.trim() ?? ''
 const repoInstalled = existsSync(join(REPO, 'githooks', 'pre-push')) || existsSync(join(REPO, 'scripts', 'tasklog-check.mjs'))
 if (repoInstalled && resolve(REPO) !== KIT) {
   for (const f of ['githooks/pre-push', 'githooks/commit-msg', 'scripts/tasklog-check.mjs']) compare('repo', f, join(REPO, f))
-  for (const f of ['scripts/migrate.mjs', 'scripts/gwork-sentinel.mjs']) compare('repo', f, join(REPO, f), { optional: true })
+  for (const f of ['githooks/pre-commit', 'scripts/migrate.mjs', 'scripts/gwork-sentinel.mjs']) compare('repo', f, join(REPO, f), { optional: true })
   if (!/(^|[\\/])githooks$/.test(hooksPath)) rows.push({ group: 'repo', file: 'core.hooksPath', state: 'missing', detail: `is "${hooksPath}" — the hooks never run` })
-  if (process.platform !== 'win32') for (const h of ['pre-push', 'commit-msg']) {
+  if (process.platform !== 'win32') for (const h of ['pre-push', 'commit-msg', 'pre-commit']) {
     const p = join(REPO, 'githooks', h)
     if (existsSync(p) && !(statSync(p).mode & 0o111)) rows.push({ group: 'repo', file: `githooks/${h}`, state: 'not executable', detail: 'git skips it with only a hint' })
   }

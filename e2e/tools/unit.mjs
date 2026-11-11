@@ -99,7 +99,10 @@ ok('migrate-refuses-existing-index', mig.status === 1 && /already exists/.test(m
 
 // --- edit-time forbidden content: both hooks, using Windows-style repo paths ---
 const winR = R.replace(/\\/g, '/')
-const feed = (hookRel, payload) => spawnSync('node', [join(KIT, hookRel)], { input: JSON.stringify(payload), encoding: 'utf8' }).stdout
+// GWORK_HOME inside the sandbox: the hooks log every decision, and a test run must never write to the real ~/.gwork
+const LOGHOME = join(SB, 'log-home')
+rmSync(LOGHOME, { recursive: true, force: true })
+const feed = (hookRel, payload) => spawnSync('node', [join(KIT, hookRel)], { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, GWORK_HOME: LOGHOME } }).stdout
 const CL = 'hooks/tasklog-gotcha.mjs', HE = 'hermes/hooks/tasklog-gotcha-hermes.mjs'
 
 let o = feed(CL, { tool_input: { file_path: `${winR}/lib/money/display.js`, content: 'const d=n=>n.toFixed(2)' }, cwd: winR, session_id: 'u1' })
@@ -241,6 +244,117 @@ sh('git checkout -q -- githooks/pre-push', R3)
 rmSync(join(fakeClaude, 'hooks/tasklog-gotcha.mjs'))
 d = drift()
 ok('drift-flags-missing-machine-copy', d.code === 1 && d.j.drift.some(r => r.file === 'hooks/tasklog-gotcha.mjs' && r.state === 'missing'))
+
+// ================= work-effectiveness round =================
+const u = (tag) => `${tag}-${process.pid}-${Date.now()}`
+const ctxOf = (out) => { try { return JSON.parse(out).hookSpecificOutput.additionalContext ?? '' } catch { return '' } }
+const edit = (hook, file, sid, cwd = winR) => feed(hook, hook === CL
+  ? { tool_name: 'Edit', tool_input: { file_path: `${winR}/${file}`, new_string: 'x' }, cwd, session_id: sid }
+  : { tool_name: 'write_file', tool_input: { path: `${winR}/${file}`, content: 'x' }, cwd, session_id: sid })
+
+// --- file-level injection: a row filed under a topic name is reached through the entry that names the file ---
+const shardR = join(R, 'task-log/2026-07.md'), shardRSrc = readFileSync(shardR, 'utf8')
+writeFileSync(shardR, shardRSrc.trimEnd() + '\n\n---\n\n<a id="2026-07-20"></a>\n## 2026-07-20 — checkout rework\n\n- **Files:** `lib/util.js`, and the helper `cart-totals-helper.js`\n')
+writeFileSync(idxPath, idxSrc.trimEnd() + '\n| checkout-flow | [2026-07-20](task-log/2026-07.md#2026-07-20) | — | totals are recomputed server-side, never trusted from the client |\n')
+let sFile = u('file')
+o = edit(CL, 'lib/util.js', sFile)
+ok('inject-file-level-by-full-path', /Earlier work touched lib\/util\.js/.test(ctxOf(o)) && /\[checkout-flow\] totals are recomputed/.test(ctxOf(o)) && !/permissionDecision/.test(o), o.slice(0, 160))
+ok('inject-file-level-once-per-file', edit(CL, 'lib/util.js', sFile).trim() === '')
+o = edit(CL, 'lib/deep/cart-totals-helper.js', sFile)
+ok('inject-row-not-repeated-in-session', o.trim() === '', o.slice(0, 120))
+o = edit(CL, 'lib/deep/cart-totals-helper.js', u('base'))
+ok('inject-file-level-by-unique-basename', /totals are recomputed/.test(ctxOf(o)), o.slice(0, 160))
+o = edit(CL, 'lib/utility.js', u('near'))
+ok('inject-file-level-needs-whole-path', o.trim() === '', o.slice(0, 120))
+o = edit(HE, 'lib/util.js', u('hfile'))
+ok('inject-file-level-hermes-blocks-once', /"action":"block"/.test(o) && /totals are recomputed/.test(o), o.slice(0, 160))
+writeFileSync(cfgPath, JSON.stringify({ ...JSON.parse(cfgSrc), tasklog: { fileInjection: false } }, null, 2) + '\n')
+ok('inject-file-level-can-be-switched-off', edit(CL, 'lib/util.js', u('off')).trim() === '')
+writeFileSync(cfgPath, cfgSrc)
+
+// --- context cleared or compacted: what was "seen" is forgotten, so it is shown again ---
+sFile = u('compact')
+edit(CL, 'lib/util.js', sFile)
+feed(CL, { hook_event_name: 'SessionStart', source: 'compact', cwd: winR, session_id: sFile })
+ok('inject-again-after-compaction', /totals are recomputed/.test(ctxOf(edit(CL, 'lib/util.js', sFile))))
+
+// --- a long entries cell cannot blow the context budget ---
+const many = Array.from({ length: 300 }, (_, i) => `[2026-07-20](task-log/2026-07.md#2026-07-20)`).join(' · ')
+writeFileSync(idxPath, idxSrc.trimEnd() + `\n| checkout-flow | ${many} | — | totals are recomputed server-side |\n`)
+o = ctxOf(edit(CL, 'lib/util.js', u('budget')))
+ok('inject-stays-inside-context-budget', o.length > 0 && o.length < 3000, `len ${o.length}`)
+writeFileSync(idxPath, idxSrc); writeFileSync(shardR, shardRSrc)
+
+// --- shell writes of forbidden content: denied for a write, untouched for a read ---
+const bash = (command) => feed(CL, { tool_name: 'Bash', tool_input: { command }, cwd: winR, session_id: u('bash') })
+ok('bash-denies-redirect-of-forbidden', /"permissionDecision":"deny"/.test(bash('echo "export const d = n => n.toFixed(2)" > lib/money/display.js')))
+ok('bash-denies-heredoc-append', /"permissionDecision":"deny"/.test(bash("cat >> lib/money/display.js <<'X'\nn.toFixed(2)\nX")))
+ok('bash-denies-sed-in-place', /"permissionDecision":"deny"/.test(bash("sed -i 's/fmt(n)/n.toFixed(2)/' lib/money/display.js")))
+ok('bash-denies-tee', /"permissionDecision":"deny"/.test(bash('echo "n.toFixed(2)" | tee -a lib/money/display.js')))
+ok('bash-allows-reading-the-pattern', bash('grep -n "\\.toFixed(" lib/money/display.js 2>&1 | head').trim() === '')
+ok('bash-allows-write-elsewhere', bash('echo "n.toFixed(2)" > lib/other/display.js').trim() === '')
+ok('bash-allows-unrelated-command', bash('git status && node -e "const f = n => n > 1"').trim() === '')
+
+// --- every decision is logged, and the stats tool reads it back ---
+const logFile = join(LOGHOME, 'log', `${new Date().toISOString().slice(0, 7)}.jsonl`)
+const logged = existsSync(logFile) ? readFileSync(logFile, 'utf8').trim().split('\n').map(l => JSON.parse(l)) : []
+ok('log-records-inject-pass-deny', ['inject', 'pass', 'deny-forbidden', 'deny-bash-forbidden', 'reset-state'].every(a => logged.some(e => e.action === a)), [...new Set(logged.map(e => e.action))].join(','))
+const stats = run(['node', join(KIT, 'scripts/gwork-stats.mjs'), '--all', '--json'], KIT, { GWORK_HOME: LOGHOME })
+let st = {}; try { st = JSON.parse(stats.stdout) } catch {}
+ok('stats-reads-the-log', st.injections?.total > 0 && st.denies?.forbiddenBash >= 4 && typeof st.hitRate === 'number', stats.stdout.slice(0, 160))
+const quiet = spawnSync('node', [join(KIT, CL)], { input: JSON.stringify({ tool_name: 'Edit', tool_input: { file_path: `${winR}/lib/money/display.js`, new_string: 'x' }, cwd: winR, session_id: u('nolog') }), encoding: 'utf8', env: { ...process.env, GWORK_HOME: join(SB, 'no-log-home'), GWORK_LOG: '0' } })
+ok('log-can-be-switched-off', quiet.stdout.length > 0 && !existsSync(join(SB, 'no-log-home')))
+
+// --- unclosed work: said once at session start, only past the threshold ---
+sh('git reset -q --hard origin/main', R3)
+const start = () => ctxOf(spawnSync('node', [join(KIT, CL)], { input: JSON.stringify({ hook_event_name: 'SessionStart', source: 'startup', cwd: R3, session_id: u('start') }), encoding: 'utf8', env: { ...process.env, GWORK_HOME: LOGHOME } }).stdout)
+ok('reminder-silent-when-closed-out', start() === '')
+for (const n of [1, 2, 3]) { writeFileSync(join(R3, `lib/w${n}.js`), 'export {}\n'); sh(`git add lib/w${n}.js`, R3); commit(`feat: work ${n}`) }
+ok('reminder-after-three-unlogged-commits', /\b[3-9] commits since the last task-log entry/.test(start()), start().slice(0, 120)) // the sandbox already carries one earlier unlogged commit
+
+// --- close-out scaffold: computes id, files, commits, modules; the result passes the checker ---
+const scaffold = (...a) => run(['node', join(KIT, 'scripts/gwork-log.mjs'), ...a], R3)
+const planOut = scaffold('--title', 'three workers')
+ok('scaffold-plan-changes-nothing', planOut.status === 0 && /nothing written/.test(planOut.stdout) && /lib\/w1\.js/.test(planOut.stdout) && sh('git status --porcelain', R3) === '', planOut.stdout.slice(0, 120))
+const wrote = scaffold('--write', '--title', 'three workers')
+const afterWrite = check3()
+ok('scaffold-write-passes-the-checker', wrote.status === 0 && afterWrite.status === 0 && /feat: work 3/.test(readFileSync(join(R3, `task-log/${new Date().toISOString().slice(0, 7)}.md`), 'utf8')), (wrote.stderr + afterWrite.stderr).slice(0, 200))
+const again = scaffold('--write', '--title', 'second of the day')
+ok('scaffold-second-entry-gets-next-id', /-2 to task-log/.test(again.stdout) && check3().status === 0, again.stdout.slice(0, 120))
+ok('reminder-clears-after-close-out', (sh('git add -A && git commit -q --no-verify -m "docs: close out"', R3), start() === ''))
+
+// --- pre-commit: a forbidden pattern is refused at the commit that adds it ---
+sh('git reset -q --hard origin/main', R3)
+writeFileSync(join(R3, 'lib/money/staged.js'), 'export const s = n => n.toFixed(2)\n')
+sh('git add lib/money/staged.js', R3)
+const badCommit = spawnSync('git', ['commit', '-q', '-m', 'feat: staged'], { cwd: R3, encoding: 'utf8' })
+ok('precommit-blocks-staged-forbidden', badCommit.status !== 0 && /F lib\/money\/staged\.js:1 \(staged\)/.test(badCommit.stderr), badCommit.stderr.slice(0, 160))
+writeFileSync(join(R3, 'lib/money/staged.js'), 'export const s = n => formatMoney(n)\n')
+sh('git add lib/money/staged.js', R3)
+ok('precommit-allows-clean-commit', spawnSync('git', ['commit', '-q', '-m', 'feat: staged'], { cwd: R3, encoding: 'utf8' }).status === 0)
+sh('git reset -q --hard origin/main', R3)
+
+// --- installer: one command, idempotent, and it never overwrites a fix made in place ---
+const IR = join(SB, 'install-repo'), IC = join(SB, 'install-claude')
+rmSync(IR, { recursive: true, force: true }); rmSync(IC, { recursive: true, force: true })
+mkdirSync(IR, { recursive: true }); mkdirSync(IC, { recursive: true })
+sh('git init -q -b main', IR)
+writeFileSync(join(IC, 'settings.json'), JSON.stringify({ theme: 'dark', hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'echo other' }] }] } }))
+const install = (...a) => run(['node', join(KIT, 'scripts/gwork-install.mjs'), '--repo', IR, ...a], KIT, { GWORK_CLAUDE_HOME: IC })
+ok('install-dry-run-changes-nothing', install('--machine', '--dry-run').status === 0 && !existsSync(join(IR, 'githooks')) && !existsSync(join(IC, 'hooks')))
+const inst = install('--machine')
+const set1 = JSON.parse(readFileSync(join(IC, 'settings.json'), 'utf8'))
+ok('install-places-repo-half', inst.status === 0 && sh('git config core.hooksPath', IR)?.trim() === 'githooks' && existsSync(join(IR, 'task-log/INDEX.md')) && (process.platform === 'win32' || ['pre-push', 'commit-msg', 'pre-commit'].every(h => statSync(join(IR, 'githooks', h)).mode & 0o111)), inst.stderr.slice(0, 160))
+ok('install-registers-hooks-and-keeps-other-settings', set1.theme === 'dark' && set1.hooks.PreToolUse.some(e => e.command === undefined && e.hooks[0].command === 'echo other') && set1.hooks.PreToolUse.some(e => e.matcher === 'Edit|Write|MultiEdit|Bash') && ['SessionStart', 'UserPromptSubmit', 'SubagentStart', 'Stop'].every(e => set1.hooks[e]?.length) && existsSync(join(IC, 'settings.json.gwork-bak')))
+const inst2 = install('--machine')
+ok('install-is-idempotent', inst2.status === 0 && /already up to date/.test(inst2.stdout) && readFileSync(join(IC, 'settings.json'), 'utf8') === JSON.stringify(set1, null, 2) + '\n', inst2.stdout.slice(0, 200))
+ok('install-result-has-no-drift', run(['node', DRIFT, '--repo', IR], KIT, { GWORK_CLAUDE_HOME: IC }).status === 0)
+writeFileSync(join(IR, 'githooks/pre-push'), readFileSync(join(IR, 'githooks/pre-push'), 'utf8') + '# fixed in place\n')
+const inst3 = install()
+ok('install-refuses-to-overwrite-local-edit', inst3.status === 2 && /edited in place/.test(inst3.stdout) && /fixed in place/.test(readFileSync(join(IR, 'githooks/pre-push'), 'utf8')), inst3.stdout.slice(0, 200))
+sh('git config core.hooksPath .husky', IR)
+const inst4 = install()
+ok('install-refuses-foreign-hookspath', inst4.status === 1 && /already "\.husky"/.test(inst4.stderr) && sh('git config core.hooksPath', IR)?.trim() === '.husky')
 
 console.log(`\nRESULT: ${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

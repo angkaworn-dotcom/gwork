@@ -20,7 +20,7 @@
  *   stdin:  {hook_event_name, tool_name, tool_input: {path, ...}, session_id, cwd, extra}
  *   stdout: {"action": "block", "message": "..."} to block · empty output = allow
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 import { tmpdir, homedir } from 'node:os'
 import { spawnSync } from 'node:child_process'
@@ -122,36 +122,80 @@ if (sentinelGuardsWarn && !seen.__sentinel) {
   writeFileSync(stateFile, JSON.stringify(seen))
   block(sentinelGuardsWarn)
 }
-if (!mod) allow()
-if (seen[mod]) allow()
-
-// --- look up the module's row in INDEX ---
-const index = readFileSync(indexPath, 'utf8')
-// ALL rows named for the module, not the first: a real INDEX files several rows under one
-// name, and `.find()` hid every one but the first.
-const rows = index.split('\n')
-  .map(l => l.split(/(?<!\\)\|/).map(s => s.trim()))
-  .filter(c => c.length >= 5 && c[1] === mod)
-if (!rows.length) allow()
+// --- same lookup as the Claude hook (hooks/tasklog-gotcha.mjs): every row of the module, then the
+// rows whose entries mention this file. Kept textually identical so the two cannot drift apart
+// in what they find; only the delivery below differs (block once, the retry passes). ---
+// --- INDEX rows: split on unescaped pipes; a row counts only when it has something to say ---
 const real = v => v && v !== 'TODO' && v !== '—' && v !== '-'
 const uniq = a => [...new Set(a.filter(real))]
-const bcs = uniq(rows.flatMap(c => c[3].split(/\s+/)))
-const gotchas = uniq(rows.map(c => c[4]))
-const entries = uniq(rows.map(c => c[2])).join(' · ')
-const hasBC = bcs.length > 0, bc = bcs.join(' ')
-const hasGotcha = gotchas.length > 0
-if (!hasBC && !hasGotcha) allow()
-const MAX_SHOWN = 12 // keeps one injection far below the harness's 10,000-character cap
-const gotchaLines = gotchas.slice(0, MAX_SHOWN).map(g => `- Gotcha: ${g}`)
-if (gotchas.length > MAX_SHOWN) gotchaLines.push(`- (+${gotchas.length - MAX_SHOWN} more gotchas for this module in task-log/INDEX.md — grep the module name)`)
+const allRows = readFileSync(indexPath, 'utf8').split('\n')
+  .map(l => l.split(/(?<!\\)\|/).map(s => s.trim()))
+  .filter(c => c.length >= 5 && c[1] !== 'Module' && !/^-+$/.test(c[1]) && (real(c[4]) || real(c[3])))
+// ALL rows named for the module, not the first: a real INDEX files several rows under one name.
+const modRows = mod ? allRows.filter(c => c[1] === mod) : []
+// a row already delivered this session is not delivered again through another file
+const rowKey = c => `${c[1]}\u0000${c[4]}`
+const shown = new Set(Array.isArray(seen.__rows) ? seen.__rows : [])
 
-seen[mod] = true
-writeFileSync(stateFile, JSON.stringify(seen))
+// --- file-level rows: entries that mention this file → the INDEX rows linking them ---
+// Entries name files two ways: by full path, and by bare filename. Measured on a real log,
+// full paths reached 22% of source files; adding the bare name — only when that name is unique
+// among tracked files, so `index.ts` never matches — reached 37%, at a median of one entry each.
+const fileRows = () => {
+  const dir = join(root, 'task-log'), ids = new Set()
+  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const base = rel.split('/').pop()
+  let needle = rel
+  if (base !== rel) {
+    const r = spawnSync('git', ['ls-files'], { cwd: root, encoding: 'utf8', timeout: 4000, maxBuffer: 64 * 1024 * 1024 })
+    const same = r.status === 0 ? r.stdout.split('\n').filter(f => f === base || f.endsWith('/' + base)).length : 2
+    if (same <= 1) needle = base // 0 = a file being created under a name the log already mentions
+  }
+  // whole-token match: `lib/a.ts` must not hit `xlib/a.ts` or `lib/a.tsx`
+  const re = new RegExp(`(?<![\\w.-])${needle === base ? '(?:[\\w.-]+/)*' : ''}${esc(needle)}(?![\\w-])`)
+  for (const f of readdirSync(dir).filter(f => /^\d{4}-\d{2}\.md$/.test(f))) {
+    const text = readFileSync(join(dir, f), 'utf8')
+    if (!text.includes(needle)) continue
+    const parts = text.split(/<a id="([^"]+)"><\/a>/) // [preamble, id, body, id, body, …]
+    for (let i = 1; i < parts.length; i += 2) if (re.test(parts[i + 1])) ids.add(parts[i])
+  }
+  if (!ids.size) return []
+  fileIds = ids
+  return allRows.filter(c => !modRows.includes(c) && !shown.has(rowKey(c)) && [...c[2].matchAll(/#([^)\s]+)\)/g)].some(m => ids.has(m[1])))
+}
+let fileIds = new Set()
+const mode = cfg.tasklog?.fileInjection ?? 'fallback'
+const wantFile = mode === 'always' || (mode === 'fallback' && !modRows.length)
+const fileKey = `f:${rel}`
+const showMod = modRows.length > 0 && !seen[mod]
+let fRows = []
+if (wantFile && !seen[fileKey]) { try { fRows = fileRows() } catch { fRows = [] } }
+const save = () => { try { writeFileSync(stateFile, JSON.stringify(seen)) } catch { /* block again at worst */ } }
+if (!showMod && !fRows.length) {
+  if (wantFile && !seen[fileKey]) { seen[fileKey] = true; save() }
+  allow()
+}
 
-block([
-  `[task-log] Editing module "${mod}" — history you must know before touching it:`,
-  hasBC ? `- Bug classes: ${bc} (details in CLAUDE.md)` : null,
-  ...gotchaLines,
-  `- Related entries (open only what you need, never the whole shard): ${entries}`,
-  `This block fires once per module. Re-issue the same tool call now that you have read the above — it will be allowed.`,
-].filter(Boolean).join('\n'))
+// Budget: the harness caps injected context at 10,000 characters, and one real INDEX row held
+// 8,000 characters of links alone. 12 gotchas and 8 links per section stay near 2,500.
+const MAX_SHOWN = 12, MAX_LINKS = 8
+const section = (rows, head, label, prefer) => {
+  const gotchas = uniq(rows.map(label)), bcs = uniq(rows.flatMap(c => c[3].split(/\s+/)))
+  const lines = gotchas.slice(0, MAX_SHOWN).map(g => `- Gotcha: ${g}`)
+  if (gotchas.length > MAX_SHOWN) lines.push(`- (+${gotchas.length - MAX_SHOWN} more in task-log/INDEX.md)`)
+  // one link per entry, the entries that mention this file first
+  let links = uniq(rows.flatMap(c => c[2].match(/\[[^\]]+\]\([^)]+\)/g) ?? []))
+  if (prefer?.size) links = [...links.filter(l => prefer.has(l.match(/#([^)\s]+)\)/)?.[1])), ...links.filter(l => !prefer.has(l.match(/#([^)\s]+)\)/)?.[1]))]
+  const more = links.length > MAX_LINKS ? ` · +${links.length - MAX_LINKS}` : ''
+  return [head, bcs.length ? `- Bug classes: ${bcs.join(' ')} (details in CLAUDE.md)` : null, ...lines,
+    links.length ? `- Related entries (open only what you need, never the whole shard): ${links.slice(0, MAX_LINKS).join(' · ')}${more}` : null].filter(Boolean).join('\n')
+}
+const parts = []
+if (showMod) parts.push(section(modRows, `[task-log] Editing module "${mod}" — history you must know before touching it:`, c => c[4]))
+if (fRows.length) parts.push(section(fRows, `[task-log] Earlier work touched ${rel} — lessons recorded for it:`, c => real(c[4]) ? `[${c[1]}] ${c[4]}` : null, fileIds))
+for (const c of [...(showMod ? modRows : []), ...fRows]) shown.add(rowKey(c))
+seen.__rows = [...shown]
+if (showMod) seen[mod] = true
+if (wantFile) seen[fileKey] = true
+save()
+block(parts.join('\n\n') + '\nThis block fires once per module and once per file. Re-issue the same tool call now that you have read the above — it will be allowed.')

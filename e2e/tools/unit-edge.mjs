@@ -88,8 +88,8 @@ const hc = (name, file, event, input, opt = {}) => {
 }
 
 // --- sandboxes ---
-execSync(`node "${join(E2E, 'setup.mjs')}" s9 30`, { cwd: KIT, stdio: 'ignore' })
-const R = join(SB, 'run-s9-30') // git repo + remote, forbidden: ^lib/money/ × \.toFixed\( , gotcha on "(shim) money"
+execSync(`node "${join(E2E, 'setup.mjs')}" s9 2`, { cwd: KIT, stdio: 'ignore' }) // the number is a count: builds run-s9-1 and run-s9-2
+const R = join(SB, 'run-s9-2') // git repo + remote, forbidden: ^lib/money/ × \.toFixed\( , gotcha on "(shim) money"
 const HEADER = '# task-log INDEX\n\n| Module | Entries (latest first) | BC | Gotcha (≤1 line) |\n|---|---|---|---|\n'
 const mk = (name, files, { git = false } = {}) => {
   const dir = join(EDGE, name)
@@ -540,7 +540,7 @@ for (const [label, text, want] of [
   sh('git checkout -q main', R)
   // a clone living in a directory with spaces and non-ASCII characters
   const odd = join(EDGE, 'clone with space ไทย')
-  sh(`git clone -q "${join(SB, 'run-s9-30-remote.git')}" "${odd}"`, EDGE)
+  sh(`git clone -q "${join(SB, 'run-s9-2-remote.git')}" "${odd}"`, EDGE)
   sh('git config user.name e && git config user.email e@example.com && git config core.hooksPath githooks && git commit -q --allow-empty -m "chore: from odd path"', odd)
   if (process.platform !== 'win32') sh('chmod +x githooks/*', odd)
   const oddPush = run(['git', 'push', 'origin', 'main'], odd, env)

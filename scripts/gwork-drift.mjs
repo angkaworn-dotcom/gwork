@@ -70,7 +70,10 @@ const compare = (group, kitRel, installed, { optional = false } = {}) => {
 // --- repo copies (only where gwork is installed) ---
 const hooksPath = git(REPO, 'config', 'core.hooksPath')?.trim() ?? ''
 const repoInstalled = existsSync(join(REPO, 'githooks', 'pre-push')) || existsSync(join(REPO, 'scripts', 'tasklog-check.mjs'))
-if (repoInstalled && resolve(REPO) !== KIT) {
+// another checkout of the kit (a dev clone) carries githooks/ and scripts/ as SOURCE, not as an
+// install — judging it as one reported a missing core.hooksPath that was never meant to be set
+const isKitCheckout = existsSync(join(REPO, 'SKILL.md')) && existsSync(join(REPO, 'scripts', 'gwork-drift.mjs'))
+if (repoInstalled && !isKitCheckout) {
   for (const f of ['githooks/pre-push', 'githooks/commit-msg', 'scripts/tasklog-check.mjs']) compare('repo', f, join(REPO, f))
   for (const f of ['githooks/pre-commit', 'scripts/migrate.mjs', 'scripts/gwork-sentinel.mjs']) compare('repo', f, join(REPO, f), { optional: true })
   if (!/(^|[\\/])githooks$/.test(hooksPath)) rows.push({ group: 'repo', file: 'core.hooksPath', state: 'missing', detail: `is "${hooksPath}" — the hooks never run` })
@@ -94,9 +97,9 @@ const drift = rows.filter(r => r.state !== 'same')
 const kitDirty = (git(KIT, 'status', '--porcelain') ?? '').split('\n').filter(Boolean).map(l => l.slice(3))
 const kitHead = git(KIT, 'rev-parse', '--short', 'HEAD')?.trim() ?? 'unknown'
 if (args.includes('--json')) {
-  console.log(JSON.stringify({ kit: KIT, kitHead, repo: repoInstalled ? REPO : null, checked: rows.length, drift, kitDirty }))
+  console.log(JSON.stringify({ kit: KIT, kitHead, repo: repoInstalled && !isKitCheckout ? REPO : null, checked: rows.length, drift, kitDirty }))
 } else {
-  console.log(`gwork-drift — kit ${kitHead} · ${rows.length} copies checked${repoInstalled ? '' : ' · no install in this repo'}`)
+  console.log(`gwork-drift — kit ${kitHead} · ${rows.length} copies checked${repoInstalled && !isKitCheckout ? '' : ' · no install in this repo'}`)
   for (const r of drift) console.log(`  ${r.state.padEnd(14)} ${r.group.padEnd(8)} ${r.file}${r.detail ? '  — ' + r.detail : ''}`)
   if (kitDirty.length) console.log(`  kit has ${kitDirty.length} uncommitted file(s): ${kitDirty.slice(0, 4).join(', ')}${kitDirty.length > 4 ? ', …' : ''} — a lesson or fix written here reaches nobody until it is committed and pushed`)
   if (!drift.length) console.log('  every copy matches the kit')

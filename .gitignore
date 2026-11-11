@@ -1,0 +1,4 @@
+
+# local planning material and agent worktrees — may hold details of private repos
+.scratch/
+.claude/

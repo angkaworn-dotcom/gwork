@@ -16,9 +16,11 @@ import { join, dirname, resolve } from 'node:path'
 import { tmpdir, homedir } from 'node:os'
 import { spawnSync } from 'node:child_process'
 
-const ok = (extra) => { console.log(JSON.stringify({
-  hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow',
-    ...(extra ? { additionalContext: extra } : {}) } })); process.exit(0) }
+// Never answer "allow": that is not a neutral pass, it SKIPS the user's permission prompt for
+// the edit. Nothing to say = no output at all; context to add = additionalContext with no
+// permissionDecision, so the normal permission flow still decides.
+const ok = (extra) => { if (extra) console.log(JSON.stringify({
+  hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: extra } })); process.exit(0) }
 const deny = (reason) => { console.log(JSON.stringify({
   hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny',
     permissionDecisionReason: reason } })); process.exit(0) }

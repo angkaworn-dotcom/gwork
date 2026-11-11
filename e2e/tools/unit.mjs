@@ -111,6 +111,12 @@ ok('edit-claude-otherpath-allowed', !/"permissionDecision":"deny"/.test(o))
 o = feed(HE, { tool_name: 'write_file', tool_input: { path: `${winR}/lib/money/display.js`, content: 'const d=n=>n.toFixed(2)' }, cwd: winR, session_id: 'u3' })
 ok('edit-hermes-forbidden-blocks', /"action":"block"/.test(o) && /forbidden/i.test(o), o.slice(0, 80))
 
+// --- the Claude hook never answers "allow": that would skip the user's permission prompt ---
+o = feed(CL, { tool_input: { file_path: `${winR}/lib/util.js`, content: 'x' }, cwd: winR, session_id: 'u7' })
+ok('edit-claude-silent-when-nothing-to-say', o.trim() === '', o.slice(0, 80))
+o = feed(CL, { tool_input: { file_path: `${winR}/lib/money/display.js`, content: 'x' }, cwd: winR, session_id: `u8-${process.pid}-${Date.now()}` })
+ok('edit-claude-gotcha-without-permission-decision', /additionalContext/.test(o) && /formatMoney/.test(o) && !/permissionDecision/.test(o), o.slice(0, 120))
+
 // --- hooks resolve the repo from the edited file, not from cwd (session started elsewhere) ---
 o = feed(CL, { tool_input: { file_path: `${winR}/lib/money/display.js`, content: 'const d=n=>n.toFixed(2)' }, cwd: KIT, session_id: 'u4' })
 ok('edit-claude-root-from-file-not-cwd', /"permissionDecision":"deny"/.test(o), o.slice(0, 80))

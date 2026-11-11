@@ -37,11 +37,11 @@ Let `<SKILL>` = this skill folder, `<REPO>` = the target repo.
    ```
    `<HOME>` = the absolute home path with forward slashes (`/home/me`, `C:/Users/me`) — `~` is not expanded here.
    The hook finds `task-log/INDEX.md` by walking up from cwd — one global copy serves every repo with the kit installed.
-5b. **Per-model profiles (once per machine, optional but recommended):** copy `hooks/model-profile.mjs` → `~/.claude/hooks/` and `profiles/` → `~/.claude/gwork-profiles/`, then register the same command under **five** events in `~/.claude/settings.json` — `SessionStart`, `UserPromptSubmit`, `SubagentStart`, `PreToolUse`, `Stop` (merge, don't overwrite; no `matcher`; the `PreToolUse` entry goes alongside the `tasklog-gotcha` one, never instead of it):
+5b. **Per-model profiles (once per machine, optional but recommended):** copy `hooks/model-profile.mjs` → `~/.claude/hooks/` and `profiles/` → `~/.claude/gwork-profiles/`, then register the same command under **six** events in `~/.claude/settings.json` — `SessionStart`, `UserPromptSubmit`, `SubagentStart`, `PreToolUse`, `Stop`, `PostModelSwitch` (merge, don't overwrite; no `matcher`; the `PreToolUse` entry goes alongside the `tasklog-gotcha` one, never instead of it):
    ```json
    "<Event>": [ { "hooks": [{ "type": "command", "command": "node \"<HOME>/.claude/hooks/model-profile.mjs\"", "timeout": 10 }] } ]
    ```
-   Injects the matching `profiles/<model>.md` once per model per session; a minor revision with no file of its own reads its family's (`fable-5-2` → `fable-5.md`); unknown model = nothing injected. Per-repo opt-out: `"profiles": false` in gwork.json. All five events are needed to catch a mid-session `/model` switch — why: LESSONS L-005. Prompt layer only, it blocks nothing.
+   Injects the matching `profiles/<model>.md` once per model per session; a minor revision with no file of its own reads its family's (`fable-5-2` → `fable-5.md`); unknown model = nothing injected. Per-repo opt-out: `"profiles": false` in gwork.json. `PostModelSwitch` (Claude Code 2.1.251+) is the documented channel for a mid-session `/model` switch; the other events cover the session's first model and older builds — why: LESSONS L-005, L-007. Prompt layer only, it blocks nothing.
 6. **CLAUDE.md:** use `CLAUDE.template.md` as the skeleton — fill `<PROJECT_NAME>`, commands, SSOT, then **move long gotchas from the old CLAUDE.md into Known Bug Classes (one line per BC-xxx)**. Keep existing architecture/project specifics; cut only rules the hooks now enforce.
 7. **Sentinel (optional, recommended when an agent runs the repo autonomously):** tamper-detector for the enforcement machinery itself — snapshots the hooks/checker/`core.hooksPath`/guards outside the repo and blocks a push (and denies edits) if any of them drifts from the owner's snapshot.
    Installation splits by trust: the **agent does the mechanics**, the **owner does the attestation** — `init`/`update` refuse from an agent shell (`CLAUDECODE` marker) even with the correct hash, precisely so an agent cannot attest to machinery it just modified.
@@ -60,7 +60,7 @@ node scripts/tasklog-check.mjs            # must be green
 git commit --allow-empty -m "bad"         # must be blocked by commit-msg (then reset)
 ```
 Test the hook: edit a file in a module that has a gotcha in INDEX → injection appears the first time, silent the second time.
-If the sentinel is installed, `node e2e/tools/unit.mjs` from the kit exercises it end-to-end (32 deterministic cases).
+If the sentinel is installed, `node e2e/tools/unit.mjs` from the kit exercises it end-to-end (34 deterministic cases).
 
 ## Self-repair — the kit fixes itself when it breaks in the field
 

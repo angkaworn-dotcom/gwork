@@ -66,11 +66,14 @@ check('sidechain (subagent) turns are skipped', /verification layer/.test(r4.ctx
 
 // --- shapes ---
 const r5 = run({ hook_event_name: 'SessionStart', session_id: sid(), cwd: work, model: 'claude-sonnet-5', source: 'startup' })
-check('SessionStart emits top-level additionalContext', JSON.parse(r5.out || '{}').additionalContext !== undefined && /scope boundaries/.test(r5.ctx))
+// top-level additionalContext is ignored by the harness without an error — every event nests it
+const j5 = JSON.parse(r5.out || '{}')
+check('SessionStart nests additionalContext in hookSpecificOutput', j5.additionalContext === undefined && j5.hookSpecificOutput?.hookEventName === 'SessionStart' && /scope boundaries/.test(r5.ctx))
 const r6 = run({ hook_event_name: 'UserPromptSubmit', session_id: sid(), cwd: work, transcript_path: t1 })
 check('UserPromptSubmit emits hookSpecificOutput', JSON.parse(r6.out || '{}').hookSpecificOutput?.hookEventName === 'UserPromptSubmit')
 const r7 = run({ hook_event_name: 'SubagentStart', session_id: sid(), cwd: work })
 check('SubagentStart → subagent profile, no model needed', /Never commit or push/.test(r7.ctx), r7.out.slice(0, 200))
+check('SubagentStart nests additionalContext too', JSON.parse(r7.out || '{}').hookSpecificOutput?.hookEventName === 'SubagentStart')
 
 // --- anti-spam ---
 const s = sid()
@@ -159,7 +162,24 @@ const t20 = transcript([assistant('claude-opus-5'), switched('`claude-fable-5-2`
 const r20 = run({ hook_event_name: 'PreToolUse', session_id: sid(), cwd: work, transcript_path: t20 })
 check('backticked id in the switch record is still a switch', /is your memory/.test(r20.ctx), r20.out.slice(0, 200))
 
-check('no stderr noise in any case', [r1, r2, r3, r4, r5, r6, r7, r9, r10, r11, r13, r14, r15, r16, r17, r18, r19, r20].every(r => !r.err))
+// --- PostModelSwitch: the documented channel — no transcript, no prompt parsing ---
+const sPms = sid()
+run({ hook_event_name: 'SessionStart', session_id: sPms, cwd: work, model: 'claude-opus-5' })
+const r21 = run({ hook_event_name: 'PostModelSwitch', session_id: sPms, cwd: work, from_model: 'claude-opus-5', to_model: 'claude-fable-5', source: 'command' })
+check('PostModelSwitch injects the new profile from to_model', /is your memory/.test(r21.ctx) && /no longer applies/.test(r21.ctx) && JSON.parse(r21.out).hookSpecificOutput.hookEventName === 'PostModelSwitch', r21.out.slice(0, 200))
+const r22 = run({ hook_event_name: 'PreToolUse', session_id: sPms, cwd: work, transcript_path: transcript([assistant('claude-fable-5')]) })
+check('later events stay silent after PostModelSwitch', r22.out === '')
+
+// --- display-name switch record: "Set model to `Sonnet 5.5` and saved as your default…" ---
+const t23 = transcript([assistant('claude-opus-5'), switched('`Sonnet 5.5` and saved as your default for new sessions')])
+const r23 = run({ hook_event_name: 'PreToolUse', session_id: sid(), cwd: work, transcript_path: t23 })
+check('display-name switch record resolves to the family profile', /scope boundaries/.test(r23.ctx), r23.out.slice(0, 200))
+
+// --- a tool call inside a subagent must not receive the main-model profile ---
+const r24 = run({ hook_event_name: 'PreToolUse', session_id: sid(), cwd: work, agent_id: 'agent-1', transcript_path: t1 })
+check('events inside a subagent get no main-model profile', r24.out === '' && r24.code === 0)
+
+check('no stderr noise in any case', [r1, r2, r3, r4, r5, r6, r7, r9, r10, r11, r13, r14, r15, r16, r17, r18, r19, r20, r21, r22, r23, r24].every(r => !r.err))
 
 rmSync(work, { recursive: true, force: true })
 console.log(fail ? `\n${fail} FAILED` : '\nall model-profile cases pass')

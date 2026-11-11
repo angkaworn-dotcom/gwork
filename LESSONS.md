@@ -4,6 +4,14 @@ Append-only, newest first. Every entry = a bug the kit hit in a real repo, fixed
 
 Format: `## L-xxx — <one-line symptom>` · date · repo · Root cause · Fix · Harness.
 
+## L-007 — the gotcha hook auto-approved every edit, and two profile injections were never delivered
+
+- **Date:** 2026-11-11 · **Repo:** gwork itself (hook contract checked against the Claude Code docs)
+- **Symptom:** none visible — that is the problem. `tasklog-gotcha.mjs` answered `permissionDecision: "allow"` on every edit it did not deny; `model-profile.mjs` emitted `additionalContext` at the top level for `SessionStart` and `SubagentStart`.
+- **Root cause:** both shapes were assumed, not read from the hooks reference. `"allow"` is documented as skipping the user's permission prompt, not as a neutral pass. Top-level `additionalContext` is documented as ignored without an error — so the subagent profile never arrived, and a `SessionStart` that resolved the model recorded "injected" and silenced every later event for that model.
+- **Fix:** the gotcha hook prints nothing when it has nothing to say and returns `additionalContext` with no `permissionDecision` otherwise · every model-profile event nests `additionalContext` in `hookSpecificOutput` · `PostModelSwitch` (2.1.251+) is handled from `to_model`, the documented channel that L-005's transcript reading was a workaround for · display-name switch records (``Set model to `Sonnet 5.5` and saved as…``) resolve · events fired inside a subagent no longer receive the main-model profile.
+- **Harness:** `node e2e/tools/unit.mjs` 34/34 · `node e2e/tools/unit-model-profile.mjs` green twice. **Not covered:** none of this has been confirmed in a live session — the unit cases prove the output shape, not that the harness honours it. Per L-005, that needs a real transcript (`claude --debug`, look for `Hook JSON output had unrecognized keys`).
+
 ## L-006 — on Linux/macOS every git gate is off: the hooks ship without the executable bit
 
 - **Date:** 2026-11-11 · **Repo:** gwork itself (first clone on Linux)

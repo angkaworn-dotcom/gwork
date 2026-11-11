@@ -465,6 +465,7 @@ for (const ev of ['Notification', 'PreCompact', '', 5, null]) ok(`profile: event
   ok('route: the word "money" inside a path is not a risk word', cli('tidy lib/money/format.js').j?.reasons.every(x => !/mentions "money"/.test(x)))
   ok('route: a risk word deep in a long brief does not count', cli('add a helper to lib/math.js. ' + 'context '.repeat(120) + 'production auth schema').j?.tier === 'standard')
   ok('route: ten or more files is breadth', (() => { const { j } = cli('update these', ['--files', ...Array.from({ length: 12 }, (_, i) => `lib/a${i}/x.js`)]); return j?.reasons.some(x => /names 12 files/.test(x)) && j.tier === 'heavy' })())
+  ok('route: backslash paths are read as paths', (() => { const { j } = cli('change rounding in lib\\money\\format.js'); return j?.reasons.some(x => /gotcha is on record for \(shim\) money/.test(x)) && j.reasons.every(x => !/mentions/.test(x)) })())
   ok('route: --task with no text', run(['node', join(KIT, ROUTE), '--task'], R).status === 1)
   ok('route: outside a gwork repo', run(['node', join(KIT, ROUTE), '--task', 'x'], tmpdir()).status === 1)
 

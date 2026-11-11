@@ -85,7 +85,8 @@ export function judge({ task, files = [], root, cwd }) {
   // files: the ones passed in, plus anything in the task text that looks like a path in this repo
   const rootNorm = root.replace(/\\/g, '/') + '/'
   const rel = (p) => { const abs = resolve(cwd ?? root, p).replace(/\\/g, '/'); return abs.toLowerCase().startsWith(rootNorm.toLowerCase()) ? abs.slice(rootNorm.length) : null }
-  const mentioned = task.match(/\/?(?:[\w.@~-]+\/)+[\w.@~-]+\.[A-Za-z0-9]{1,6}|\/?(?:[\w.@-]+\/){1,}[\w.@-]+\/?/g) ?? []
+  // paths as Windows writes them too: `D:\\repo\\lib\\x.js` and `lib\\x.js` are read with forward slashes
+  const mentioned = task.replace(/\\/g, '/').match(/(?:[A-Za-z]:)?\/?(?:[\w.@~-]+\/)+[\w.@~-]+\.[A-Za-z0-9]{1,6}|(?:[A-Za-z]:)?\/?(?:[\w.@-]+\/){1,}[\w.@-]+\/?/g) ?? []
   const rels = [...new Set([...files, ...mentioned].map(f => rel(f.replace(/[.,;:)]+$/, '')) ?? (f.startsWith('/') ? null : f.replace(/^\.\//, ''))).filter(Boolean))].slice(0, 200)
 
   const rules = Array.isArray(cfg.modules) && cfg.modules.length ? cfg.modules : DEFAULT_MODULES
@@ -119,7 +120,7 @@ export function judge({ task, files = [], root, cwd }) {
   // Words are read from the task STATEMENT — the description and the opening of the brief — and
   // from prose only. A long brief mentions "production" or "auth" somewhere whatever it is about,
   // and `lib/money/x.js` already counted as a module, not as the word "money".
-  const head = task.slice(0, 500).replace(/(?:[\w.@~-]+\/)+[\w.@~-]*/g, ' ')
+  const head = task.slice(0, 500).replace(/\\/g, '/').replace(/(?:[A-Za-z]:)?(?:[\w.@~-]+\/)+[\w.@~-]*/g, ' ')
   const risky = anyOf(r.risky, DEFAULTS.risky), mech = anyOf(r.mechanical, DEFAULTS.mechanical), open = anyOf(r.openEnded, DEFAULTS.openEnded)
   const riskHit = risky && head.match(risky), mechHit = mech && head.match(mech), openHit = open && head.match(open)
   if (riskHit) add(2, `the task mentions "${riskHit[0].toLowerCase()}"`)
@@ -160,7 +161,7 @@ if (!task) process.exit(0)
 const cwd = str(data.cwd) || process.cwd()
 // the repo: the session's own, else the first absolute path the brief names (a session opened elsewhere)
 let root = rootOf(cwd)
-if (!root) for (const p of task.match(/\/[\w.@~/-]+/g) ?? []) { root = rootOf(existsSync(p) ? p : dirname(p)); if (root) break }
+if (!root) for (const p of task.replace(/\\/g, '/').match(/(?:[A-Za-z]:)?\/[\w.@~/-]+/g) ?? []) { root = rootOf(existsSync(p) ? p : dirname(p)); if (root) break }
 if (!root) process.exit(0)
 
 const j = judge({ task, root, cwd })

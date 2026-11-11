@@ -15,6 +15,8 @@ One principle: **any rule that can be checked deterministically becomes a hook/s
 | absolute prohibitions (`forbidden` patterns in gwork.json) | tasklog-check (check F) | push blocked — a prompt-level order is not an override; only the repo owner is, via gwork.json |
 | read gotchas before touching a module or a file | `hooks/tasklog-gotcha.mjs` (PreToolUse) | auto-injected — the AI never has to remember |
 | forbidden pattern staged for commit | `githooks/pre-commit` (check F on the index) | commit rejected |
+| everything above, when the push used `--no-verify` | `templates/gwork-check.yml` (installed with `--ci`, required by the owner) | pull request cannot merge |
+| an installed copy behind the kit, or fixed in place | `hooks/tasklog-gotcha.mjs` at session start, once a day | said to the agent — never blocking |
 | forbidden pattern written through the shell (`>`, `tee`, `sed -i`) | `hooks/tasklog-gotcha.mjs` on Bash | command denied — best effort |
 | Evidence / Clarify Early / design decisions belong to the owner / subagents never commit | `CLAUDE.template.md` (prompt) | judgment — can't be automated |
 | rules that differ per model (delegation, task-log-as-memory, small-model scaffolding) | `hooks/model-profile.mjs` + `profiles/<model>.md` | judgment — injected for the running model, never blocking |

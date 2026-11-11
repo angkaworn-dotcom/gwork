@@ -27,6 +27,12 @@ Two more keys under `tasklog`, both read by `hooks/tasklog-gotcha.mjs`:
 - `fileInjection`: `"fallback"` (default) — when the edited file's module has no INDEX row, inject the rows whose entries mention that file (by full path, or by bare filename when it is unique in the repo) · `"always"` — do both every time · `false` — module lookup only
 - `unclosedCommits`: `3` (default) — at session start, say once when this many commits have landed since the last task-log entry · `0` turns it off
 
+### `driftNotice` — the once-a-day copy check
+```json
+"driftNotice": false
+```
+At session start, once a day per repo, the gotcha hook runs `scripts/gwork-drift.mjs` from the kit (`$GWORK_KIT`, default `~/.claude/skills/gwork`) and says so when an installed copy is behind, was edited in place, or the kit holds uncommitted files. Silent when everything matches. `false` turns it off.
+
 ### `log` — the hooks' decision log
 ```json
 "log": false

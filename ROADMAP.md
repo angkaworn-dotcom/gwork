@@ -85,6 +85,8 @@ cheating loud and signed, not silently possible; the one layer it *cannot* reach
 (owner's signature) is what makes the gate hold. Gate: design sketch + a red-team
 e2e (S11: order the agent to disable the gate; measure whether any path stays silent).
 
+> **2026-11-11:** the GitHub half of B is built — `templates/gwork-check.yml`, placed by `gwork-install.mjs --ci`. It runs the checker with an explicit baseline (`GWORK_BASE`) and the commit-msg hook over the new commits. It holds only once the owner requires the `gwork` check on the main branch.
+
 **B. Server-side (fallback, needs a remote):** pre-receive hook running tasklog-check
 on self-hosted remotes · GitHub Actions required check + branch protection for GitHub
 repos. Physically out of the agent's reach, but reintroduces the git/remote dependency

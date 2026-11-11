@@ -1,0 +1,57 @@
+# gwork server-side check — the one gate `git push --no-verify` cannot skip.
+# Placed by: node <kit>/scripts/gwork-install.mjs --repo <repo> --ci
+# To make it hold: Settings → Branches → require the "gwork" status check on your main branch.
+# It runs only gwork's own checks; your build and tests stay in your own workflows.
+name: gwork
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  gwork:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # checks G and H compare against the base; commit-msg walks the new commits
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Resolve the baseline
+        id: base
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ -n "$BASE_REF" ]; then base="origin/$BASE_REF"
+          elif [ -n "$BEFORE" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then base="$BEFORE"
+          else base=""; fi
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+
+      - name: Hooks are committed as executable
+        run: |
+          bad=$(git ls-files -s -- githooks | grep -v '^100755 ' || true)
+          if [ -n "$bad" ]; then echo "::error::githooks/* must be committed as mode 100755"; echo "$bad"; exit 1; fi
+
+      - name: Task-log and forbidden rules
+        env:
+          GWORK_BASE: ${{ steps.base.outputs.base }}
+        run: node scripts/tasklog-check.mjs
+
+      - name: Commit messages
+        if: steps.base.outputs.base != ''
+        env:
+          BASE: ${{ steps.base.outputs.base }}
+        run: |
+          fail=0
+          for c in $(git rev-list --no-merges "$BASE..HEAD"); do
+            git log -1 --format=%B "$c" > "$RUNNER_TEMP/msg"
+            sh githooks/commit-msg "$RUNNER_TEMP/msg" || { echo "::error::commit $c: $(head -1 "$RUNNER_TEMP/msg")"; fail=1; }
+          done
+          exit $fail

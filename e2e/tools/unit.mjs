@@ -102,7 +102,9 @@ const winR = R.replace(/\\/g, '/')
 // GWORK_HOME inside the sandbox: the hooks log every decision, and a test run must never write to the real ~/.gwork
 const LOGHOME = join(SB, 'log-home')
 rmSync(LOGHOME, { recursive: true, force: true })
-const feed = (hookRel, payload) => spawnSync('node', [join(KIT, hookRel)], { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, GWORK_HOME: LOGHOME } }).stdout
+// GWORK_KIT at nothing: the once-a-day drift notice must not fire from whatever kit this machine has installed
+const HOOKENV = { ...process.env, GWORK_HOME: LOGHOME, GWORK_KIT: join(SB, 'no-kit') }
+const feed = (hookRel, payload) => spawnSync('node', [join(KIT, hookRel)], { input: JSON.stringify(payload), encoding: 'utf8', env: HOOKENV }).stdout
 const CL = 'hooks/tasklog-gotcha.mjs'
 
 let o = feed(CL, { tool_input: { file_path: `${winR}/lib/money/display.js`, content: 'const d=n=>n.toFixed(2)' }, cwd: winR, session_id: 'u1' })
@@ -209,10 +211,14 @@ const note = run(['node', 'scripts/tasklog-check.mjs'], R)
 ok('check-notes-unreachable-module-without-failing', note.status === 0 && /note: 1 of 2 INDEX module names/.test(note.stdout) && /checkout-flow/.test(note.stdout), (note.stdout + note.stderr).slice(0, 200))
 writeFileSync(cfgPath, cfgSrc); writeFileSync(idxPath, idxSrc)
 
-// --- checker notes modules that repeat gotchas without a BC, without failing ---
-writeFileSync(idxPath, idxSrc.trimEnd() + '\n| (shim) money | [2026-07-10](task-log/2026-07.md#2026-07-10) | — | a second, different lesson |\n')
-const bcNote = run(['node', 'scripts/tasklog-check.mjs'], R)
-ok('check-notes-unpromoted-repeats', bcNote.status === 0 && /note: 1 modules hold 2\+ gotchas and no BC/.test(bcNote.stdout), (bcNote.stdout + bcNote.stderr).slice(0, 200))
+// --- checker notes a lesson that REPEATS on a module (near-duplicate rows), not merely 2+ lessons ---
+const moneyGotcha = idxSrc.split('\n').find(l => l.includes('(shim) money')).split('|')[4].trim()
+writeFileSync(idxPath, idxSrc.trimEnd() + '\n| (shim) money | [2026-07-10](task-log/2026-07.md#2026-07-10) | — | a second, entirely different lesson about rounding totals |\n')
+let rep = run(['node', 'scripts/tasklog-check.mjs'], R)
+ok('check-distinct-lessons-are-not-a-repeat', rep.status === 0 && !/same lesson/.test(rep.stdout), rep.stdout.slice(0, 200))
+writeFileSync(idxPath, idxSrc.trimEnd() + `\n| (shim) money | [2026-07-10](task-log/2026-07.md#2026-07-10) | — | ${moneyGotcha.replace('NEVER', 'never ever')} |\n`)
+rep = run(['node', 'scripts/tasklog-check.mjs'], R)
+ok('check-notes-a-repeated-lesson', rep.status === 0 && /note: 1 module\(s\) carry the same lesson/.test(rep.stdout), (rep.stdout + rep.stderr).slice(0, 200))
 writeFileSync(idxPath, idxSrc)
 
 // --- drift detector: tells a copy that is merely behind from one edited in place ---
@@ -304,7 +310,7 @@ ok('log-can-be-switched-off', quiet.stdout.length > 0 && !existsSync(join(SB, 'n
 
 // --- unclosed work: said once at session start, only past the threshold ---
 sh('git reset -q --hard origin/main', R3)
-const start = () => ctxOf(spawnSync('node', [join(KIT, CL)], { input: JSON.stringify({ hook_event_name: 'SessionStart', source: 'startup', cwd: R3, session_id: u('start') }), encoding: 'utf8', env: { ...process.env, GWORK_HOME: LOGHOME } }).stdout)
+const start = () => ctxOf(spawnSync('node', [join(KIT, CL)], { input: JSON.stringify({ hook_event_name: 'SessionStart', source: 'startup', cwd: R3, session_id: u('start') }), encoding: 'utf8', env: HOOKENV }).stdout)
 ok('reminder-silent-when-closed-out', start() === '')
 for (const n of [1, 2, 3]) { writeFileSync(join(R3, `lib/w${n}.js`), 'export {}\n'); sh(`git add lib/w${n}.js`, R3); commit(`feat: work ${n}`) }
 ok('reminder-after-three-unlogged-commits', /\b[3-9] commits since the last task-log entry/.test(start()), start().slice(0, 120)) // the sandbox already carries one earlier unlogged commit
@@ -438,6 +444,32 @@ rmSync(join(R3, 'githooks/pre-commit')); writeFileSync(snapFile, JSON.stringify(
 ok('sentinel-older-snapshot-without-pre-commit-still-verifies', sRun('verify').status === 0, sRun('verify').stderr.slice(0, 160))
 sh('git checkout -q -- githooks/pre-commit', R3); rmSync(join(R3, 'scripts/gwork-sentinel.mjs'))
 ok('sentinel-flags-pre-commit-appearing', run(['node', join(SH, 'bin/gwork-sentinel.mjs'), 'verify', '--repo', R3], R3, sEnv).status === 2)
+
+// --- session-start drift notice: once a day, only when there is something to say ---
+sh('git reset -q --hard origin/main', R3)
+writeFileSync(join(R3, 'githooks/commit-msg'), readFileSync(join(R3, 'githooks/commit-msg'), 'utf8') + '# fixed in place\n')
+const DH = join(SB, 'drift-home')
+rmSync(DH, { recursive: true, force: true })
+const sessStart = (env = {}) => ctxOf(spawnSync('node', [join(KIT, CL)], { input: JSON.stringify({ hook_event_name: 'SessionStart', source: 'startup', cwd: R3, session_id: u('dn') }), encoding: 'utf8', env: { ...process.env, GWORK_HOME: DH, GWORK_KIT: KIT, GWORK_CLAUDE_HOME: IC, ...env } }).stdout)
+const firstNotice = sessStart()
+ok('drift-notice-at-session-start', /\[gwork\] installed copies: .*(edited in place|differing)/.test(firstNotice), firstNotice.slice(0, 200))
+ok('drift-notice-once-a-day', !/installed copies/.test(sessStart()))
+rmSync(DH, { recursive: true, force: true })
+writeCfg({ ...cfg3, driftNotice: false })
+ok('drift-notice-can-be-switched-off', !/installed copies/.test(sessStart()))
+sh('git checkout -q -- githooks/commit-msg gwork.json', R3)
+
+// --- server-side check: --ci places the workflow; GWORK_BASE gives a detached checkout a baseline ---
+const ci1 = install('--ci', '--force')
+ok('install-ci-places-the-workflow', existsSync(join(IR, '.github/workflows/gwork-check.yml')) && /Server-side check placed/.test(ci1.stdout), (ci1.stdout + ci1.stderr).slice(0, 200))
+sh('git reset -q --hard origin/main', R3)
+writeCfg({ ...cfg3, forbidden: [] }); commit('chore: quiet removal')
+const headSha = sh('git rev-parse HEAD', R3).trim()
+sh(`git checkout -q --detach ${headSha}`, R3)
+const detached = run(['node', 'scripts/tasklog-check.mjs'], R3)
+const withBase = run(['node', 'scripts/tasklog-check.mjs'], R3, { GWORK_BASE: 'origin/main' })
+ok('ci-baseline-makes-check-G-run-on-a-detached-head', !/^\s*G /m.test(detached.stderr) && /^\s*G gwork\.json/m.test(withBase.stderr), (detached.stderr + '|' + withBase.stderr).slice(0, 200))
+sh('git checkout -q main && git reset -q --hard origin/main', R3)
 
 // --- machine-only: no repo needed, nothing written outside the Claude home ---
 const IC2 = join(SB, 'install-claude-2')

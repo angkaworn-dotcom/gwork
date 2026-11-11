@@ -11,6 +11,8 @@
  *   node <kit>/scripts/gwork-install.mjs --machine [--repo <path>]  + ~/.claude hooks, commands, profiles, settings.json
  *   node <kit>/scripts/gwork-install.mjs --machine-only             the machine half alone (no repo needed)
  *   --dry-run   print every action, change nothing        --force   overwrite a copy edited in place
+ *   --ci        also place .github/workflows/gwork-check.yml — the server-side check that
+ *               `git push --no-verify` cannot skip (the owner still has to require it)
  *
  * What it will NOT do, by design:
  *   - overwrite a copy that matches no kit version (a fix made in place) without --force
@@ -89,6 +91,14 @@ if (!existsSync(join(REPO, 'task-log', 'INDEX.md'))) {
 // a repo that ignores scripts/ or githooks/ runs the kit locally and breaks for every clone (L-002)
 const ignored = spawnSync('git', ['check-ignore', 'scripts/tasklog-check.mjs', 'githooks/pre-push', 'githooks/commit-msg', 'githooks/pre-commit', 'task-log/INDEX.md'], { cwd: REPO, encoding: 'utf8' }).stdout.split('\n').filter(Boolean)
 for (const f of ignored) todo.push(`.gitignore hides ${f} — un-ignore it (ignore "/scripts/*" not "/scripts/", then "!/${f}")`)
+if (has('ci')) {
+  const wf = join(REPO, '.github', 'workflows', 'gwork-check.yml')
+  if (existsSync(wf) && !same(join(KIT, 'templates', 'gwork-check.yml'), wf) && !FORCE) skipped.push(`${wf} — exists and differs from the template; pass --force to replace it.`)
+  else if (!existsSync(wf) || FORCE) act(`copy: templates/gwork-check.yml → ${wf}`, () => { mkdirSync(dirname(wf), { recursive: true }); copyFileSync(join(KIT, 'templates', 'gwork-check.yml'), wf) })
+  todo.push('Server-side check placed. It only holds once required: repository Settings → Branches → require the "gwork" status check.')
+} else if (!existsSync(join(REPO, '.github', 'workflows', 'gwork-check.yml'))) {
+  todo.push('No server-side check: `git push --no-verify` skips every local gate. Re-run with --ci to place a workflow that cannot be skipped.')
+}
 if (!existsSync(join(REPO, 'gwork.json'))) todo.push('No gwork.json: the default commit types, prepush checks and module map apply. Tune them per ADAPT.md (copy from gwork.example.json).')
 todo.push('After `git add githooks`, `git ls-files -s githooks` must show 100755 (from Windows: git update-index --chmod=+x githooks/*).')
 todo.push('CLAUDE.md: start from CLAUDE.template.md; move long gotchas into Known Bug Classes.')

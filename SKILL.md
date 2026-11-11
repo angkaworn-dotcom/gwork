@@ -23,6 +23,7 @@ Let `<SKILL>` = this skill folder, `<REPO>` = the target repo.
    node <SKILL>/scripts/gwork-install.mjs --repo <REPO>               # repo half
    node <SKILL>/scripts/gwork-install.mjs --repo <REPO> --machine     # once per machine: ~/.claude hooks, commands, profiles, settings.json
    node <SKILL>/scripts/gwork-install.mjs --machine-only              # the machine half alone, e.g. after updating the kit
+   node <SKILL>/scripts/gwork-install.mjs --repo <REPO> --ci          # + .github/workflows/gwork-check.yml, the check `--no-verify` cannot skip
    ```
    Repo half: copies `githooks/{pre-push,commit-msg,pre-commit}` (executable) and `scripts/{tasklog-check,migrate}.mjs`, sets `core.hooksPath`, creates an empty `task-log/`, warns when `.gitignore` hides a copied file (L-002).
    Machine half: copies the two hooks, the slash commands and the profiles, and registers the hooks in `~/.claude/settings.json` — adding what is missing, leaving every other entry alone, keeping the previous file as `settings.json.gwork-bak`.
@@ -39,7 +40,7 @@ Let `<SKILL>` = this skill folder, `<REPO>` = the target repo.
    node <REPO>/scripts/gwork-sentinel.mjs init --repo <REPO>   # agent shell → refused + prints the owner one-liner
    ```
    The refusal prints a one-liner (`GWORK_SENTINEL_CONFIRM=<hash> … init`) — hand it to the owner verbatim to paste in **their own terminal**. The hash pins the exact bytes being attested: if anything changes between the agent preparing it and the owner running it, the hash mismatches and the command fails. On a real terminal, plain `init` with y/N works as before.
-   After any legitimate change to the hooks or `gwork.json` guards, the owner re-runs `update` the same way. It closes silent machinery tampering (hooksPath removal, neutered checker); it does **not** close `git push --no-verify` — that needs the server side (see ROADMAP).
+   After any legitimate change to the hooks or `gwork.json` guards, the owner re-runs `update` the same way. It closes silent machinery tampering (hooksPath removal, neutered checker); it does **not** close `git push --no-verify` — that needs the server side: install with `--ci`, then have the owner require the `gwork` status check on the main branch.
 
 ## Verify after install
 
@@ -49,7 +50,7 @@ git commit --allow-empty -m "bad"         # must be blocked by commit-msg (then 
 ```
 Test the hook: edit a file in a module that has a gotcha in INDEX → injection appears the first time, silent the second time.
 `node <SKILL>/scripts/gwork-drift.mjs --repo <REPO>` must report every copy as matching. After a week of use, `node <SKILL>/scripts/gwork-stats.mjs` shows what the hooks actually delivered.
-If the sentinel is installed, `node e2e/tools/unit.mjs` from the kit exercises it end-to-end (108 deterministic cases).
+If the sentinel is installed, `node e2e/tools/unit.mjs` from the kit exercises it end-to-end (114 deterministic cases).
 
 ## Self-repair — the kit fixes itself when it breaks in the field
 

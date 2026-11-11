@@ -278,7 +278,7 @@ function reachabilityNote() {
   }
   const unpromoted = [...perMod].filter(([, m]) => m.gotchas.size >= 2 && !m.bc).sort((a, b) => b[1].gotchas.size - a[1].gotchas.size)
   if (unpromoted.length) console.log(`  note: ${unpromoted.length} modules hold 2+ gotchas and no BC — a lesson that repeats belongs in CLAUDE.md as a BC (${unpromoted.slice(0, 3).map(([n, m]) => `${n} ×${m.gotchas.size}`).join(', ')}${unpromoted.length > 3 ? ', …' : ''})`)
-  if (dead.length) console.log(`  note: ${dead.length} of ${names.size} INDEX module names are produced by no tracked file under gwork.json → modules — their gotchas are never injected (${dead.slice(0, 3).join(', ')}${dead.length > 3 ? ', …' : ''})`)
+  if (dead.length) console.log(`  note: ${dead.length} of ${names.size} INDEX module names are produced by no tracked file under gwork.json → modules — the hook reaches them only through entries that name the edited file (${dead.slice(0, 3).join(', ')}${dead.length > 3 ? ', …' : ''})`)
 }
 
 if (errors.length) {

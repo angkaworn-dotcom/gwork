@@ -16,15 +16,30 @@ if [ ! -t 0 ]; then
     exit 1
   done
 fi
+# Guarded/non-interactive git runners can expose a narrower PATH than the login shell
+# (found in an installed repo): resolve node once, fail loud if it is missing.
+NODE_BIN=$(command -v node 2>/dev/null || true)
+if [ -z "$NODE_BIN" ] && [ -x "$HOME/.local/bin/node" ]; then
+  NODE_BIN="$HOME/.local/bin/node"
+fi
+if [ -z "$NODE_BIN" ]; then
+  echo "[pre-push] BLOCKED — node is required for repository checks" >&2
+  exit 1
+fi
+NODE_DIR=${NODE_BIN%/*}
+case ":$PATH:" in
+  *":$NODE_DIR:"*) ;;
+  *) PATH="$NODE_DIR:$PATH"; export PATH ;; # so the gwork.json prepush commands find it too
+esac
 # sentinel (if installed): the enforcement machinery itself must match the owner snapshot
 SENTINEL="${GWORK_HOME:-$HOME/.gwork}/bin/gwork-sentinel.mjs"
 if [ -f "$SENTINEL" ]; then
-  node "$SENTINEL" verify --repo "$(pwd)" || {
+  "$NODE_BIN" "$SENTINEL" verify --repo "$(pwd)" || {
     echo "[pre-push] BLOCKED — gwork-sentinel found tampered enforcement state (owner: node scripts/gwork-sentinel.mjs update)" >&2
     exit 1
   }
 fi
-CMDS=$(node -e "let c={};try{c=require(process.cwd()+'/gwork.json')}catch(e){if(e.code!=='MODULE_NOT_FOUND'){console.error('pre-push: cannot parse gwork.json — '+e.message);process.exit(1)}};(Array.isArray(c.prepush)&&c.prepush.length?c.prepush:['npx tsc --noEmit','node scripts/tasklog-check.mjs']).forEach(x=>console.log(x))")
+CMDS=$("$NODE_BIN" -e "let c={};try{c=require(process.cwd()+'/gwork.json')}catch(e){if(e.code!=='MODULE_NOT_FOUND'){console.error('pre-push: cannot parse gwork.json — '+e.message);process.exit(1)}};(Array.isArray(c.prepush)&&c.prepush.length?c.prepush:['npx tsc --noEmit','node scripts/tasklog-check.mjs']).forEach(x=>console.log(x))")
 printf '%s\n' "$CMDS" |
 while IFS= read -r cmd; do
   [ -n "$cmd" ] || continue

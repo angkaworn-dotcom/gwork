@@ -162,5 +162,34 @@ commit('docs: entry')
 check3()
 ok('check-H-anchor-id-not-executed', !existsSync(join(R3, 'pwned')))
 
+// --- commit-msg: a real `git commit` through the hook (no case rejected a commit before) ---
+const tryCommit = (msg) => spawnSync('git', ['commit', '-q', '--allow-empty', '-m', msg], { cwd: R3, encoding: 'utf8' })
+ok('commit-msg-rejects-untyped', tryCommit('bad message').status !== 0)
+ok('commit-msg-rejects-at-prefix', tryCommit('@fix: thing').status !== 0)
+ok('commit-msg-rejects-unknown-type', tryCommit('wip: thing').status !== 0)
+ok('commit-msg-accepts-typed', tryCommit('fix: thing').status === 0)
+ok('commit-msg-accepts-scope', tryCommit('feat(money): thing').status === 0)
+ok('commit-msg-accepts-git-generated', tryCommit('Revert "fix: thing"').status === 0)
+writeFileSync(cfg3Path, '{ broken')
+const badCfg = tryCommit('fix: thing')
+ok('commit-msg-blocks-on-broken-config', badCfg.status !== 0 && /cannot parse gwork\.json/.test(badCfg.stderr), badCfg.stderr.slice(0, 100))
+writeCfg(cfg3)
+
+// --- gotcha hooks deliver EVERY row filed under the module, not just the first ---
+writeFileSync(idxPath, idxSrc.trimEnd() + '\n| (shim) money | [2026-07-10](task-log/2026-07.md#2026-07-10) | BC-007 | second lesson: totals round half-even |\n')
+const uniqSid = `multi-${process.pid}-${Date.now()}`
+o = feed(CL, { tool_input: { file_path: `${winR}/lib/money/display.js`, content: 'x' }, cwd: winR, session_id: uniqSid })
+ok('gotcha-claude-all-rows-of-module', /formatMoney/.test(o) && /half-even/.test(o) && /BC-007/.test(o), o.slice(0, 160))
+o = feed(HE, { tool_name: 'write_file', tool_input: { path: `${winR}/lib/money/display.js`, content: 'x' }, cwd: winR, session_id: uniqSid })
+ok('gotcha-hermes-all-rows-of-module', /formatMoney/.test(o) && /half-even/.test(o), o.slice(0, 160))
+
+// --- checker notes INDEX rows no module rule can reach, without failing ---
+const cfgR = JSON.parse(readFileSync(cfgPath, 'utf8'))
+writeFileSync(cfgPath, JSON.stringify({ ...cfgR, modules: [{ pattern: '^lib/([\\w-]+)', name: '(shim) $1' }] }, null, 2) + '\n')
+writeFileSync(idxPath, idxSrc.trimEnd() + '\n| checkout-flow | [2026-07-10](task-log/2026-07.md#2026-07-10) | — | filed under a topic, not a path |\n')
+const note = run(['node', 'scripts/tasklog-check.mjs'], R)
+ok('check-notes-unreachable-module-without-failing', note.status === 0 && /note: 1 of 2 INDEX module names/.test(note.stdout) && /checkout-flow/.test(note.stdout), (note.stdout + note.stderr).slice(0, 200))
+writeFileSync(cfgPath, cfgSrc); writeFileSync(idxPath, idxSrc)
+
 console.log(`\nRESULT: ${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

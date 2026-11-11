@@ -4,6 +4,14 @@ Append-only, newest first. Every entry = a bug the kit hit in a real repo, fixed
 
 Format: `## L-xxx — <one-line symptom>` · date · repo · Root cause · Fix · Harness.
 
+## L-008 — an installed repo held two fixes the kit never received, and its INDEX was almost entirely unreachable
+
+- **Date:** 2026-11-11 · **Repo:** an installed repo in sustained daily use
+- **Symptom:** nothing failed. The installed `pre-push`, `commit-msg` and `tasklog-check.mjs` differed from the kit; and the gotcha hook could match only a handful of the module names in INDEX.
+- **Root cause:** (1) two field fixes were made in the installed copies only — hooks resolving `node` when git runs them with a narrow `PATH`, and check F passing its pattern as an argv item — against the Self-repair rule that a fix lands at the source. Nothing detects an installed copy drifting ahead of the kit. (2) INDEX rows were filed under topic names while the hook derives the name from the file path via `gwork.json → modules`; the two vocabularies never met, and no check compares them. (3) Where a name did match, the hook read the first row only, so every further row of the same name was hidden.
+- **Fix:** both field fixes are now in the kit · the gotcha hooks (Claude and Hermes) merge every row filed under the module, capped at 12 gotchas per injection · `tasklog-check` prints a non-blocking note naming how many INDEX module names no tracked file can produce · `commit-msg` has unit cases that run a real `git commit` · a CI workflow asserts hook mode and line endings on three operating systems.
+- **Harness:** `node e2e/tools/unit.mjs` 44/44. **Not fixed, by design:** the vocabulary mismatch itself — whether rows should be renamed, rules widened, or matching changed is an owner decision. The CI workflow has not run on a real runner.
+
 ## L-007 — the gotcha hook auto-approved every edit, and two profile injections were never delivered
 
 - **Date:** 2026-11-11 · **Repo:** gwork itself (hook contract checked against the Claude Code docs)

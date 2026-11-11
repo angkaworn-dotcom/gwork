@@ -130,16 +130,23 @@ if (seen[mod]) okW()
 
 // --- look up the module's row in INDEX ---
 const index = readFileSync(indexPath, 'utf8')
-const row = index.split('\n').find(l => {
-  const c = l.split('|').map(s => s.trim())
-  return c.length >= 5 && c[1] === mod
-})
-if (!row) okW()
-const cols = row.split('|').map(s => s.trim())
-const [, , entries, bc, gotcha] = cols
-const hasBC = bc && bc !== '—'
-const hasGotcha = gotcha && gotcha !== 'TODO' && gotcha !== '—' && gotcha !== '-' && gotcha !== ''
+// ALL rows named for the module, not the first: a real INDEX files several rows under one
+// name, and `.find()` hid every one but the first.
+const rows = index.split('\n')
+  .map(l => l.split(/(?<!\\)\|/).map(s => s.trim()))
+  .filter(c => c.length >= 5 && c[1] === mod)
+if (!rows.length) okW()
+const real = v => v && v !== 'TODO' && v !== '—' && v !== '-'
+const uniq = a => [...new Set(a.filter(real))]
+const bcs = uniq(rows.flatMap(c => c[3].split(/\s+/)))
+const gotchas = uniq(rows.map(c => c[4]))
+const entries = uniq(rows.map(c => c[2])).join(' · ')
+const hasBC = bcs.length > 0, bc = bcs.join(' ')
+const hasGotcha = gotchas.length > 0
 if (!hasBC && !hasGotcha) okW()
+const MAX_SHOWN = 12 // keeps one injection far below the harness's 10,000-character cap
+const gotchaLines = gotchas.slice(0, MAX_SHOWN).map(g => `- Gotcha: ${g}`)
+if (gotchas.length > MAX_SHOWN) gotchaLines.push(`- (+${gotchas.length - MAX_SHOWN} more gotchas for this module in task-log/INDEX.md — grep the module name)`)
 
 seen[mod] = true
 writeFileSync(stateFile, JSON.stringify(seen))
@@ -147,7 +154,7 @@ writeFileSync(stateFile, JSON.stringify(seen))
 const msg = [
   `[task-log] Editing module "${mod}" — history you must know before touching it:`,
   hasBC ? `- Bug classes: ${bc} (details in CLAUDE.md)` : null,
-  hasGotcha ? `- Gotcha: ${gotcha}` : null,
+  ...gotchaLines,
   `- Related entries (open only what you need, never the whole shard): ${entries}`,
 ].filter(Boolean).join('\n')
 okW(msg)

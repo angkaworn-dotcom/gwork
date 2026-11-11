@@ -4,6 +4,23 @@ Append-only, newest first. Every entry = a bug the kit hit in a real repo, fixed
 
 Format: `## L-xxx — <one-line symptom>` · date · repo · Root cause · Fix · Harness.
 
+## L-010 — a raw NUL byte made the checker a binary file; the fix sat uncommitted in an installed skill clone
+
+- **Date:** 2026-10-27 (found in a field install) · upstreamed 2026-11-11
+- **Symptom:** `grep` printed nothing for patterns that exist in `scripts/tasklog-check.mjs`, and `git diff` on it said "Binary files differ" — a reviewer could not read changes to the checker.
+- **Root cause:** `ruleKey` joined path and pattern with a literal NUL byte inside a template literal. JavaScript accepts it; git and grep classify any file containing a NUL as binary.
+- **Fix:** the separator is written as the `\u0000` escape — same runtime value, plain-text file. **Second lesson:** this fix, its lesson, and an earlier note about the executable bit (now L-006) had been written into the installed skill clone and never committed, so the kit shipped the defect for two more weeks. `gwork-drift.mjs` now also reports uncommitted files in the kit itself.
+- **Harness:** `node e2e/tools/unit.mjs` 91/91 · `git diff --stat` shows line counts for the checker again.
+
+## L-009 — measured: in a real session the gotcha hook delivered nothing, and one injection overflowed the context cap
+
+- **Date:** 2026-11-11 · **Repo:** a copy of a real task-log (several hundred entries), replayed offline
+- **Symptom:** replaying the files of the last 40 commits as one session produced **0** injections. Across all tracked source files, 53% got an injection, but it was the same one or two catch-all rows; the largest single injection was 13,259 characters, over the harness's 10,000 cap.
+- **Root cause:** lookup was by module name only, and the INDEX was filed under topic names (L-008). The injection printed whole entry cells, and one row carried 8,000 characters of links.
+- **Fix, each step measured before the next:** (1) file-level lookup — rows whose linked entries mention the edited file: 53% → 62% of files. (2) Entries name files by bare filename as often as by path; matching the bare name when it is unique among tracked files: → 71%, at a median of one entry per file. (3) Links cut to 8 per section, the entries naming this file first: largest injection 13,259 → 2,683 characters, average 1,789 → 929. (4) A row delivered once in a session is not delivered again through another file. Same replayed session after the change: 11 injections, 18 distinct gotchas, about 1,900 tokens. Cost: median 24 → 28 ms per edit.
+- **Also added, because the above could not have been found without them:** the hooks now log every decision (`scripts/gwork-stats.mjs` reads it) · state is dropped when the context is cleared or compacted · shell writes of forbidden content are denied · `pre-commit` runs check F on the index · a session-start note after 3 commits with no entry · `scripts/gwork-log.mjs` computes the mechanical half of a close-out · `scripts/gwork-install.mjs` replaces 22 manual steps.
+- **Harness:** `node e2e/tools/unit.mjs` 90/90. **Not measured:** whether delivered gotchas change what an agent does — that needs the LLM e2e scenarios, and the new log from real sessions. The shell-write check is pattern matching on a command line; it can be evaded and is documented as best effort.
+
 ## L-008 — an installed repo held two fixes the kit never received, and its INDEX was almost entirely unreachable
 
 - **Date:** 2026-11-11 · **Repo:** an installed repo in sustained daily use

@@ -17,7 +17,8 @@ Report the current repo's gwork status concisely. Communicate with the user in t
      on the next update unless it is moved into the kit first
 2. **Config:** is there a `gwork.json` → does it parse → show which keys override defaults (no file = say all defaults are active)
 3. **Task-log health:** run `node scripts/tasklog-check.mjs` → green/red, entry count · when was the latest entry vs the repo's latest commit (code much newer than the log = unclosed work)
-4. **BCs:** count BCs in CLAUDE.md · quote the checker's `note:` lines (modules holding 2+ gotchas with no BC,
+4. **What the hooks did:** `node ~/.claude/skills/gwork/scripts/gwork-stats.mjs` → quote it. A low hit rate with a full INDEX means the rows are filed under names the edits never reach
+5. **BCs:** count BCs in CLAUDE.md · quote the checker's `note:` lines (modules holding 2+ gotchas with no BC,
    INDEX module names the hook can never reach)
 
 Summarize as a short ✅/❌ table + targeted suggestions for what's missing. This command only reports — change nothing.

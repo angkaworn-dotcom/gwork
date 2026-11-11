@@ -13,7 +13,9 @@ One principle: **any rule that can be checked deterministically becomes a hook/s
 | logged work must update INDEX (latest month) | `scripts/tasklog-check.mjs` in pre-push | push blocked |
 | rotten/wrong-shard INDEX links · gotcha too long · BC rows carrying text | tasklog-check | push blocked |
 | absolute prohibitions (`forbidden` patterns in gwork.json) | tasklog-check (check F) | push blocked — a prompt-level order is not an override; only the repo owner is, via gwork.json |
-| read gotchas before touching a module | `hooks/tasklog-gotcha.mjs` (PreToolUse) | auto-injected — the AI never has to remember |
+| read gotchas before touching a module or a file | `hooks/tasklog-gotcha.mjs` (PreToolUse) | auto-injected — the AI never has to remember |
+| forbidden pattern staged for commit | `githooks/pre-commit` (check F on the index) | commit rejected |
+| forbidden pattern written through the shell (`>`, `tee`, `sed -i`) | `hooks/tasklog-gotcha.mjs` on Bash | command denied — best effort |
 | Evidence / Clarify Early / design decisions belong to the owner / subagents never commit | `CLAUDE.template.md` (prompt) | judgment — can't be automated |
 | rules that differ per model (delegation, task-log-as-memory, small-model scaffolding) | `hooks/model-profile.mjs` + `profiles/<model>.md` | judgment — injected for the running model, never blocking |
 
@@ -45,26 +47,23 @@ and needs nothing. The gotcha hook and the slash commands have Hermes counterpar
 five `SKILL.md` skills. Verified against hermes-agent's real hook dispatcher plus a
 live model loop (e2e S10, 3/3).
 
-## Manual install (without the skill)
+## Install
 
 ```bash
-# 1. copy the skeleton
-cp -r githooks <repo>/githooks
-cp scripts/tasklog-check.mjs scripts/migrate.mjs <repo>/scripts/
-cd <repo> && git config core.hooksPath githooks && chmod +x githooks/*   # no exec bit = git skips the hook silently
-
-# 2. existing log → migrate (create gwork.json from gwork.example.json first — see ADAPT.md)
-node scripts/migrate.mjs "update task.md"
-# no log → create task-log/INDEX.md (table header) + an empty task-log/<YYYY-MM>.md
-
-# 3. gotcha-injection hook (once per machine)
-cp hooks/tasklog-gotcha.mjs ~/.claude/hooks/
-# then register PreToolUse in ~/.claude/settings.json:
+node ~/.claude/skills/gwork/scripts/gwork-install.mjs --repo <repo> --dry-run   # see every action first
+node ~/.claude/skills/gwork/scripts/gwork-install.mjs --repo <repo> --machine   # repo half + ~/.claude hooks, commands, profiles, settings.json
 ```
-```json
-"hooks": { "PreToolUse": [ { "matcher": "Edit|Write|MultiEdit",
-  "hooks": [{ "type": "command", "command": "node \"<ABS>/.claude/hooks/tasklog-gotcha.mjs\"", "timeout": 15 }] } ] }
-```
+
+Idempotent, stages nothing, keeps `settings.json.gwork-bak`, and refuses to overwrite a copy that was edited in place. What it leaves to you (gwork.json, CLAUDE.md, migrating an old log, the sentinel) is printed at the end — details in [SKILL.md](SKILL.md).
+
+## Tools that run from the kit
+
+| Command | What it answers |
+|---|---|
+| `scripts/gwork-install.mjs` | install or re-sync a repo and this machine |
+| `scripts/gwork-drift.mjs` | which installed copies differ from the kit — behind, or edited in place |
+| `scripts/gwork-log.mjs` | the mechanical half of a close-out: next id, files, commits, INDEX links |
+| `scripts/gwork-stats.mjs` | what the hooks actually did: injections, hit rate, denies, latency |
 
 ## Per-model profiles
 

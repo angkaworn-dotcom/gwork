@@ -88,12 +88,17 @@ if (hasAny(join(CLAUDE, 'gwork-profiles'))) for (const f of list('profiles', /\.
 for (const f of list('commands', /\.md$/)) compare('machine', `commands/${f}`, join(CLAUDE, 'commands', f))
 
 const drift = rows.filter(r => r.state !== 'same')
+// The kit itself can hold work that never left the machine: lessons and fixes written into an
+// installed skill clone and not committed (L-010). Reported, not counted — a kit under
+// development is legitimately dirty.
+const kitDirty = (git(KIT, 'status', '--porcelain') ?? '').split('\n').filter(Boolean).map(l => l.slice(3))
 const kitHead = git(KIT, 'rev-parse', '--short', 'HEAD')?.trim() ?? 'unknown'
 if (args.includes('--json')) {
-  console.log(JSON.stringify({ kit: KIT, kitHead, repo: repoInstalled ? REPO : null, checked: rows.length, drift }))
+  console.log(JSON.stringify({ kit: KIT, kitHead, repo: repoInstalled ? REPO : null, checked: rows.length, drift, kitDirty }))
 } else {
   console.log(`gwork-drift — kit ${kitHead} · ${rows.length} copies checked${repoInstalled ? '' : ' · no install in this repo'}`)
   for (const r of drift) console.log(`  ${r.state.padEnd(14)} ${r.group.padEnd(8)} ${r.file}${r.detail ? '  — ' + r.detail : ''}`)
+  if (kitDirty.length) console.log(`  kit has ${kitDirty.length} uncommitted file(s): ${kitDirty.slice(0, 4).join(', ')}${kitDirty.length > 4 ? ', …' : ''} — a lesson or fix written here reaches nobody until it is committed and pushed`)
   if (!drift.length) console.log('  every copy matches the kit')
   else if (drift.some(r => r.state === 'local edit')) console.log('  local edits are fixes the kit never received: move them into the kit before any update overwrites them')
 }

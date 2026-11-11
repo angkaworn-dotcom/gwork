@@ -4,6 +4,14 @@ Append-only, newest first. Every entry = a bug the kit hit in a real repo, fixed
 
 Format: `## L-xxx — <one-line symptom>` · date · repo · Root cause · Fix · Harness.
 
+## L-010 — a raw NUL byte made the checker a binary file; the fix sat uncommitted in an installed skill clone
+
+- **Date:** 2026-10-27 (found in a field install) · upstreamed 2026-11-11
+- **Symptom:** `grep` printed nothing for patterns that exist in `scripts/tasklog-check.mjs`, and `git diff` on it said "Binary files differ" — a reviewer could not read changes to the checker.
+- **Root cause:** `ruleKey` joined path and pattern with a literal NUL byte inside a template literal. JavaScript accepts it; git and grep classify any file containing a NUL as binary.
+- **Fix:** the separator is written as the `\u0000` escape — same runtime value, plain-text file. **Second lesson:** this fix, its lesson, and an earlier note about the executable bit (now L-006) had been written into the installed skill clone and never committed, so the kit shipped the defect for two more weeks. `gwork-drift.mjs` now also reports uncommitted files in the kit itself.
+- **Harness:** `node e2e/tools/unit.mjs` 91/91 · `git diff --stat` shows line counts for the checker again.
+
 ## L-009 — measured: in a real session the gotcha hook delivered nothing, and one injection overflowed the context cap
 
 - **Date:** 2026-11-11 · **Repo:** a copy of a real task-log (several hundred entries), replayed offline

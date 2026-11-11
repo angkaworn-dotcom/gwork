@@ -1,0 +1,42 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: [22, 26]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # the drift detector compares installed copies with OLDER kit versions
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+
+      # Git on Windows runs a hook with or without the executable bit, so only the index
+      # can show a wrong mode there (LESSONS L-006). Same answer on every runner.
+      - name: Hooks are committed as 100755 with LF endings
+        shell: bash
+        run: |
+          files=$(git ls-files -- githooks)
+          bad_mode=$(git ls-files -s -- githooks | grep -v '^100755 ' || true)
+          bad_eol=$(git ls-files --eol -- githooks | grep -Ev '^i/lf +w/lf ' || true)
+          if [ -z "$files" ] || [ -n "$bad_mode" ] || [ -n "$bad_eol" ]; then
+            echo "::error::githooks/* must be committed as mode 100755 with LF endings"
+            echo "$bad_mode"; echo "$bad_eol"
+            exit 1
+          fi
+
+      - run: node e2e/tools/unit.mjs
+      - run: node e2e/tools/unit-model-profile.mjs

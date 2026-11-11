@@ -9,18 +9,7 @@ One principle: **any rule that can be checked deterministically becomes a hook/s
 
 All source files live in this skill folder (`scripts/`, `githooks/`, `hooks/`, `commands/`, `profiles/`, `CLAUDE.template.md`). Communicate with the user in their language. `e2e/` is the kit's own test harness — never copy it into a target repo; rerun it after changing any hook or script (see [e2e/README.md](e2e/README.md)). Field failures and their fixes live in [LESSONS.md](LESSONS.md) — **read its newest entries before an install**, and when the kit itself misbehaves follow the Self-repair protocol below.
 
-## What is enforced by what
-
-| Rule | Enforced by | If violated |
-|---|---|---|
-| tsc passes before push | `githooks/pre-push` | push blocked |
-| commit format `type: desc`, no `@` | `githooks/commit-msg` | commit rejected |
-| logged work must update INDEX (latest month) | `scripts/tasklog-check.mjs` in pre-push | push blocked |
-| rotten/wrong-shard INDEX links · gotcha too long · BC rows carrying text | tasklog-check | push blocked |
-| absolute prohibitions (`forbidden` patterns in gwork.json) | tasklog-check (check F) | push blocked — only the owner overrides, via gwork.json |
-| read gotchas before touching a module | `hooks/tasklog-gotcha.mjs` (PreToolUse) | auto-injected |
-| Evidence / Clarify Early / design decisions belong to the owner / subagents never commit | CLAUDE.md (prompt) | judgment |
-| rules that differ per model (delegation, task-log-as-memory, small-model scaffolding) | `hooks/model-profile.mjs` + `profiles/<model>.md` | judgment — injected, never blocking |
+What each hook/script enforces: the table in [README.md](README.md). Deterministic rules block (pre-push, commit-msg, tasklog-check); everything in CLAUDE.md and `profiles/` is prompt, never a gate.
 
 ## Install into a target repo
 
@@ -33,30 +22,26 @@ Let `<SKILL>` = this skill folder, `<REPO>` = the target repo.
    cp -r <SKILL>/githooks <REPO>/githooks
    mkdir -p <REPO>/scripts
    cp <SKILL>/scripts/tasklog-check.mjs <SKILL>/scripts/migrate.mjs <REPO>/scripts/
-   cd <REPO> && git config core.hooksPath githooks
+   cd <REPO> && git config core.hooksPath githooks && chmod +x githooks/*
    ```
+   On Linux/macOS git **silently skips** a hook file without the executable bit — only a `hint:` line, the push goes through. After `git add githooks`, `git ls-files -s githooks` must show `100755` (Windows checkout: `git update-index --chmod=+x githooks/pre-push githooks/commit-msg`).
    Check the repo's `.gitignore` covers none of the copied paths (`git check-ignore scripts/tasklog-check.mjs githooks/pre-push task-log/INDEX.md`) — a repo that ignores `/scripts/` silently unstages the checker (L-002: dir-level ignore also defeats `!negation`; change to `/scripts/*` + `!/scripts/tasklog-check.mjs`).
 3. **task-log:**
    - Existing log (entries headed `## YYYY-MM-DD — title`): `node scripts/migrate.mjs "<log file>"` → produces `task-log/` (source file untouched)
    - None: create `task-log/INDEX.md` (empty table header `| Module | Entries (latest first) | BC | Gotcha (≤1 line) |`) + an empty `task-log/<YYYY-MM>.md`
-4. **Slash commands (once per machine):** `cp <SKILL>/commands/*.md ~/.claude/commands/` → gives `/gwork-log` `/gwork-check` `/gwork-rule` `/gwork-status` `/gwork-update`
+4. **Slash commands (once per machine):** `cp <SKILL>/commands/*.md ~/.claude/commands/` → gives `/gwork-log` `/gwork-check` `/gwork-rule` `/gwork-import` `/gwork-status` `/gwork-update`
 5. **PreToolUse hook (once per machine):** copy `hooks/tasklog-gotcha.mjs` → `~/.claude/hooks/` and add to `~/.claude/settings.json` (merge into existing hooks, don't overwrite):
    ```json
    "PreToolUse": [ { "matcher": "Edit|Write|MultiEdit",
-     "hooks": [{ "type": "command", "command": "node \"C:/Users/<USER>/.claude/hooks/tasklog-gotcha.mjs\"", "timeout": 15 }] } ]
+     "hooks": [{ "type": "command", "command": "node \"<HOME>/.claude/hooks/tasklog-gotcha.mjs\"", "timeout": 15 }] } ]
    ```
+   `<HOME>` = the absolute home path with forward slashes (`/home/me`, `C:/Users/me`) — `~` is not expanded here.
    The hook finds `task-log/INDEX.md` by walking up from cwd — one global copy serves every repo with the kit installed.
-5b. **Per-model profiles (once per machine, optional but recommended):** copy `hooks/model-profile.mjs` → `~/.claude/hooks/` and `profiles/` → `~/.claude/gwork-profiles/`, then register three events in `~/.claude/settings.json` (merge, don't overwrite):
+5b. **Per-model profiles (once per machine, optional but recommended):** copy `hooks/model-profile.mjs` → `~/.claude/hooks/` and `profiles/` → `~/.claude/gwork-profiles/`, then register the same command under **six** events in `~/.claude/settings.json` — `SessionStart`, `UserPromptSubmit`, `SubagentStart`, `PreToolUse`, `Stop`, `PostModelSwitch` (merge, don't overwrite; no `matcher`; the `PreToolUse` entry goes alongside the `tasklog-gotcha` one, never instead of it):
    ```json
-   "SessionStart":     [ { "hooks": [{ "type": "command", "command": "node \"C:/Users/<USER>/.claude/hooks/model-profile.mjs\"", "timeout": 10 }] } ],
-   "UserPromptSubmit": [ { "hooks": [{ "type": "command", "command": "node \"C:/Users/<USER>/.claude/hooks/model-profile.mjs\"", "timeout": 10 }] } ],
-   "SubagentStart":    [ { "hooks": [{ "type": "command", "command": "node \"C:/Users/<USER>/.claude/hooks/model-profile.mjs\"", "timeout": 10 }] } ],
-   "PreToolUse":       [ { "hooks": [{ "type": "command", "command": "node \"C:/Users/<USER>/.claude/hooks/model-profile.mjs\"", "timeout": 10 }] } ],
-   "Stop":             [ { "hooks": [{ "type": "command", "command": "node \"C:/Users/<USER>/.claude/hooks/model-profile.mjs\"", "timeout": 10 }] } ]
+   "<Event>": [ { "hooks": [{ "type": "command", "command": "node \"<HOME>/.claude/hooks/model-profile.mjs\"", "timeout": 10 }] } ]
    ```
-   Injects only the gwork rules that differ per model (Opus 5 must not spawn verifier subagents · Fable 5 should delegate freely and treat task-log as memory · small models still need the self-review scaffolding). One file per model in `profiles/`, injected once per model per session. Unknown model = nothing injected. Per-repo opt-out: `"profiles": false` in gwork.json.
-   All five events earn their place — a mid-session `/model` switch is the hard case (L-005): `SessionStart` never re-fires, and when `UserPromptSubmit` fires the switch is **not in the transcript yet**, so it is caught from the prompt text (`/model <id>`); `PreToolUse` catches it at the first tool call, since by then the transcript has it; `Stop` closes the last gap — a text-only turn with no tool calls — by injecting before the next turn starts. Add the `PreToolUse` entry alongside the `tasklog-gotcha` one (no `matcher` = every tool) — don't replace it.
-   **This layer is prompt, not enforcement** — it aims the prompt better, it doesn't block anything. The gates stay pre-push/commit-msg/tasklog-check.
+   Injects the matching `profiles/<model>.md` once per model per session; a minor revision with no file of its own reads its family's (`fable-5-2` → `fable-5.md`); unknown model = nothing injected. Per-repo opt-out: `"profiles": false` in gwork.json. `PostModelSwitch` (Claude Code 2.1.251+) is the documented channel for a mid-session `/model` switch; the other events cover the session's first model and older builds — why: LESSONS L-005, L-007. Prompt layer only, it blocks nothing.
 6. **CLAUDE.md:** use `CLAUDE.template.md` as the skeleton — fill `<PROJECT_NAME>`, commands, SSOT, then **move long gotchas from the old CLAUDE.md into Known Bug Classes (one line per BC-xxx)**. Keep existing architecture/project specifics; cut only rules the hooks now enforce.
 7. **Sentinel (optional, recommended when an agent runs the repo autonomously):** tamper-detector for the enforcement machinery itself — snapshots the hooks/checker/`core.hooksPath`/guards outside the repo and blocks a push (and denies edits) if any of them drifts from the owner's snapshot.
    Installation splits by trust: the **agent does the mechanics**, the **owner does the attestation** — `init`/`update` refuse from an agent shell (`CLAUDECODE` marker) even with the correct hash, precisely so an agent cannot attest to machinery it just modified.
@@ -75,7 +60,7 @@ node scripts/tasklog-check.mjs            # must be green
 git commit --allow-empty -m "bad"         # must be blocked by commit-msg (then reset)
 ```
 Test the hook: edit a file in a module that has a gotcha in INDEX → injection appears the first time, silent the second time.
-If the sentinel is installed, `node e2e/tools/unit.mjs` from the kit exercises it end-to-end (15 deterministic cases).
+If the sentinel is installed, `node e2e/tools/unit.mjs` from the kit exercises it end-to-end (56 deterministic cases).
 
 ## Self-repair — the kit fixes itself when it breaks in the field
 
@@ -85,7 +70,8 @@ Iron rule: **a kit bug found during install or daily use is fixed at the source,
 2. **Fix the source file in this skill folder**, then sync the fix to the installed copy in the repo you're working in (installed copies are deployments, not forks — never let them drift; add a code comment explaining the why)
 3. **Append the lesson to `LESSONS.md`** (newest first): id `L-xxx` · date · repo found in · symptom · root cause · fix. If the failure was an install step (not a code bug), also update the install instructions above in the same session, citing the `L-xxx`
 4. **Rerun the harness** when the changed file is covered: `node e2e/tools/unit.mjs` after touching the sentinel, hooks, or tasklog-check; full e2e per [e2e/README.md](e2e/README.md) for behavior changes. Changed file not covered → say so explicitly in the lesson
-5. **Sentinel repos:** if a repaired file is under a sentinel snapshot, pushes there will block until the owner re-runs `node scripts/gwork-sentinel.mjs update` — tell them, don't work around it
+5. **Check for drift before any update:** `node scripts/gwork-drift.mjs --repo <REPO>` from the kit lists every installed copy that differs. `behind` is safe to overwrite; `local edit` is a fix that exists only in that copy — move it into the kit first (L-008)
+6. **Sentinel repos:** if a repaired file is under a sentinel snapshot, pushes there will block until the owner re-runs `node scripts/gwork-sentinel.mjs update` — tell them, don't work around it
 
 Self-repair boundary: it may fix bugs, silence false noise, and add checks — it must **never weaken enforcement** (removing/softening a gate, widening an escape hatch) without the owner's explicit ok in chat; that path stays governed by the gwork.json `forbidden` rules and check G.
 

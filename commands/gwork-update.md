@@ -17,6 +17,9 @@ enforcing the old rules.
 - `git -C ~/.claude/skills/gwork status --porcelain` → **not empty = stop.** Report the dirty files
   and ask what to do. Local edits are never discarded or stashed silently.
 - `git -C ~/.claude/skills/gwork fetch -q origin` then `git -C ~/.claude/skills/gwork log --oneline HEAD..origin/main`
+- `node ~/.claude/skills/gwork/scripts/gwork-drift.mjs` (run from the repo) → every copy that differs, and
+  which way. **Any `local edit` = stop before overwriting:** that copy holds a fix the kit never received
+  (L-008). Show the diff, move the fix into the kit first, then update.
 - Diff each machine-level copy against the skill's version: `commands/*.md`, `hooks/tasklog-gotcha.mjs`,
   `hooks/model-profile.mjs`, `profiles/*.md` → `~/.claude/gwork-profiles/`
 - **Profile coverage:** list `profiles/*.md` against the models in use. A model with no profile file gets
@@ -53,7 +56,8 @@ version added keys, point the user at `ADAPT.md`; don't write them.
 
 - `node scripts/tasklog-check.mjs` still green (repo case) — red after an update is a finding, report it verbatim
 - PreToolUse for `tasklog-gotcha.mjs` still registered in `~/.claude/settings.json`; if `model-profile.mjs`
-  is present, so are its five events (SessionStart · UserPromptSubmit · SubagentStart · PreToolUse · Stop)
+  is present, so are its six events (SessionStart · UserPromptSubmit · SubagentStart · PreToolUse · Stop ·
+  PostModelSwitch)
   — a missing one is silent, not loud: the profile just never arrives
 - `node e2e/tools/unit-model-profile.mjs` from the kit after any change to the profile hook
 - Repo copies are an uncommitted working-tree change — say so and suggest `chore: update gwork kit to <short-sha>`;

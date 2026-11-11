@@ -51,7 +51,7 @@ live model loop (e2e S10, 3/3).
 # 1. copy the skeleton
 cp -r githooks <repo>/githooks
 cp scripts/tasklog-check.mjs scripts/migrate.mjs <repo>/scripts/
-cd <repo> && git config core.hooksPath githooks
+cd <repo> && git config core.hooksPath githooks && chmod +x githooks/*   # no exec bit = git skips the hook silently
 
 # 2. existing log → migrate (create gwork.json from gwork.example.json first — see ADAPT.md)
 node scripts/migrate.mjs "update task.md"
@@ -68,7 +68,7 @@ cp hooks/tasklog-gotcha.mjs ~/.claude/hooks/
 
 ## Per-model profiles
 
-CLAUDE.md carries what every model needs; `profiles/<model>.md` carries what only one of them does — because the guidance genuinely conflicts. Opus 5 is told not to use subagents to verify its own work; Fable 5 is told to delegate freely and use verifier subagents on long runs; small models keep the self-review scaffolding that makes large models over-verify. `hooks/model-profile.mjs` injects the file matching the model actually running (including after a mid-session `/model` switch) and nothing else. Unknown model = nothing injected.
+CLAUDE.md carries what every model needs; `profiles/<model>.md` carries what only one of them does — because the guidance genuinely conflicts. Opus 5 is told not to use subagents to verify its own work; Fable 5 is told to delegate freely and use verifier subagents on long runs; small models keep the self-review scaffolding that makes large models over-verify. `hooks/model-profile.mjs` injects the file matching the model actually running (including after a mid-session `/model` switch) and nothing else. A minor revision with no file of its own falls back to its family (`fable-5-2` → `fable-5.md`). Unknown model = nothing injected.
 
 Everything the agent harness already handles per model — response length, scope, progress updates, self-correction — is deliberately **absent** from both layers. Repeating it there costs tokens and causes over-verification.
 

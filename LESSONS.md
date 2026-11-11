@@ -4,6 +4,30 @@ Append-only, newest first. Every entry = a bug the kit hit in a real repo, fixed
 
 Format: `## L-xxx — <one-line symptom>` · date · repo · Root cause · Fix · Harness.
 
+## L-008 — an installed repo held two fixes the kit never received, and its INDEX was almost entirely unreachable
+
+- **Date:** 2026-11-11 · **Repo:** an installed repo in sustained daily use
+- **Symptom:** nothing failed. The installed `pre-push`, `commit-msg` and `tasklog-check.mjs` differed from the kit; and the gotcha hook could match only a handful of the module names in INDEX.
+- **Root cause:** (1) two field fixes were made in the installed copies only — hooks resolving `node` when git runs them with a narrow `PATH`, and check F passing its pattern as an argv item — against the Self-repair rule that a fix lands at the source. Nothing detects an installed copy drifting ahead of the kit. (2) INDEX rows were filed under topic names while the hook derives the name from the file path via `gwork.json → modules`; the two vocabularies never met, and no check compares them. (3) Where a name did match, the hook read the first row only, so every further row of the same name was hidden.
+- **Fix:** both field fixes are now in the kit · the gotcha hooks (Claude and Hermes) merge every row filed under the module, capped at 12 gotchas per injection · `tasklog-check` prints a non-blocking note naming how many INDEX module names no tracked file can produce · `commit-msg` has unit cases that run a real `git commit` · a CI workflow asserts hook mode and line endings on three operating systems · `scripts/gwork-drift.mjs` reports each installed copy as same, behind, or edited in place, so a fix living only in a copy is seen before an update overwrites it · the checker also notes modules holding 2+ gotchas with no BC.
+- **Harness:** `node e2e/tools/unit.mjs` 56/56, now with a blocking case for every check A–H. **Not fixed, by design:** the vocabulary mismatch itself — whether rows should be renamed, rules widened, or matching changed is an owner decision. The CI workflow has not run on a real runner.
+
+## L-007 — the gotcha hook auto-approved every edit, and two profile injections were never delivered
+
+- **Date:** 2026-11-11 · **Repo:** gwork itself (hook contract checked against the Claude Code docs)
+- **Symptom:** none visible — that is the problem. `tasklog-gotcha.mjs` answered `permissionDecision: "allow"` on every edit it did not deny; `model-profile.mjs` emitted `additionalContext` at the top level for `SessionStart` and `SubagentStart`.
+- **Root cause:** both shapes were assumed, not read from the hooks reference. `"allow"` is documented as skipping the user's permission prompt, not as a neutral pass. Top-level `additionalContext` is documented as ignored without an error — so the subagent profile never arrived, and a `SessionStart` that resolved the model recorded "injected" and silenced every later event for that model.
+- **Fix:** the gotcha hook prints nothing when it has nothing to say and returns `additionalContext` with no `permissionDecision` otherwise · every model-profile event nests `additionalContext` in `hookSpecificOutput` · `PostModelSwitch` (2.1.251+) is handled from `to_model`, the documented channel that L-005's transcript reading was a workaround for · display-name switch records (``Set model to `Sonnet 5.5` and saved as…``) resolve · events fired inside a subagent no longer receive the main-model profile.
+- **Harness:** `node e2e/tools/unit.mjs` 34/34 · `node e2e/tools/unit-model-profile.mjs` green twice. **Not covered:** none of this has been confirmed in a live session — the unit cases prove the output shape, not that the harness honours it. Per L-005, that needs a real transcript (`claude --debug`, look for `Hook JSON output had unrecognized keys`).
+
+## L-006 — on Linux/macOS every git gate is off: the hooks ship without the executable bit
+
+- **Date:** 2026-11-11 · **Repo:** gwork itself (first clone on Linux)
+- **Symptom:** `node e2e/tools/unit.mjs` → `FAIL sentinel-prepush-blocks`; a real `git push` printed only `hint: The 'githooks/pre-push' hook was ignored because it's not set as executable` and went through. commit-msg was skipped the same way — no tsc, no tasklog-check, no sentinel at push time.
+- **Root cause:** `githooks/*` were committed as mode `100644` (authored on Windows, where the bit does not exist and git runs hooks regardless). Install copied them as-is, and no step set or checked the bit.
+- **Fix:** mode `100755` in the index for both hooks · install step 2 (SKILL.md, README) now runs `chmod +x githooks/*` and checks `git ls-files -s githooks` · unit case `githooks-executable`.
+- **Harness:** `node e2e/tools/unit.mjs` 32/32 (was 17/18 on Linux). Same pass added: pre-push blocks a pushed commit that is neither HEAD nor already on a remote, tasklog-check calls git with argv instead of a shell string, check G attributes the owner trailer per commit instead of to the last commit on the file, both gotcha hooks resolve the repo from the edited file before cwd, sentinel treats a deleted snapshot as tamper, check C counts text behind an escaped `\|`, migrate refuses to overwrite an existing INDEX, model-profile falls back from a minor revision to its family profile (current ids such as `claude-fable-5-2` matched no file, so nothing was ever injected).
+
 ## L-005 — a `/model` switch is not in the transcript when UserPromptSubmit fires
 
 - **Date:** 2026-07-27 · **Repo:** gwork itself (model-profile hook, first live use)

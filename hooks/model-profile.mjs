@@ -10,7 +10,10 @@
  * self-review scaffolding that large models are hurt by. One file per model, injected
  * only for the model actually running.
  *
- * Events (register all three; each is one line in settings.json):
+ * Events (each is one line in settings.json):
+ *   PostModelSwitch  — the documented channel for a mid-session switch (Claude Code 2.1.251+):
+ *                      carries `to_model`, delivered with the next request. Where it exists it
+ *                      makes the transcript-reading fallbacks below redundant; they stay for older builds.
  *   SessionStart     — `model` field is optional and often absent → falls back to the transcript
  *   UserPromptSubmit — authoritative: reads the transcript tail every prompt, injects ONLY when
  *                      the model changed since the last injection (mid-session /model switches
@@ -20,6 +23,7 @@
  * Fail-open everywhere: a missing profile, an unreadable transcript or a broken config
  * must never block a prompt. Unknown model = inject nothing (never guess a profile —
  * pushing small-model scaffolding into a new large model is worse than staying silent).
+ * A minor revision is not an unknown model: fable-5-2 with no fable-5-2.md reads fable-5.md.
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync, openSync, readSync, closeSync, rmSync } from 'node:fs'
 import { join, dirname, isAbsolute } from 'node:path'
@@ -28,8 +32,9 @@ import { tmpdir, homedir } from 'node:os'
 // Four chances to catch a model change, because no single one covers every path (L-005):
 // UserPromptSubmit reads the prompt text (a typed /model never reaches the transcript in time),
 // PreToolUse catches it at the first tool call (by then the transcript has it), Stop closes the
-// remaining gap — a turn with no tool calls at all — by injecting before the NEXT turn starts.
-const EVENT = { SessionStart: 'top', SubagentStart: 'top', UserPromptSubmit: 'wrapped', PreToolUse: 'wrapped', Stop: 'wrapped' }
+// remaining gap — a turn with no tool calls at all. Context returned on Stop continues the turn
+// (one extra model step, once per switch); it does not wait for the next prompt.
+const EVENTS = new Set(['SessionStart', 'SubagentStart', 'UserPromptSubmit', 'PreToolUse', 'Stop', 'PostModelSwitch'])
 
 let input = ''
 try { input = readFileSync(0, 'utf8').replace(/^﻿/, '') } catch { process.exit(0) } // strip BOM some shells prepend when piping
@@ -37,8 +42,7 @@ let data = {}
 try { data = JSON.parse(input) } catch { process.exit(0) }
 
 const event = data?.hook_event_name ?? ''
-const shape = EVENT[event]
-if (!shape) process.exit(0)
+if (!EVENTS.has(event)) process.exit(0)
 
 // /clear and compaction wipe the context but not our state file — without this reset the
 // profile would never be re-injected even though the model no longer sees it. SessionStart
@@ -49,11 +53,9 @@ if (event === 'SessionStart' && ['clear', 'compact'].includes(data?.source)) {
 }
 
 const emit = (text) => {
-  if (text) {
-    console.log(JSON.stringify(shape === 'top'
-      ? { additionalContext: text }
-      : { hookSpecificOutput: { hookEventName: event, additionalContext: text } }))
-  }
+  // One shape for every event: additionalContext at the top level is ignored without an error
+  // (it used to be emitted that way for SessionStart/SubagentStart, so nothing was delivered).
+  if (text) console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: text } }))
   process.exit(0)
 }
 
@@ -87,13 +89,19 @@ const readProfile = (name) => {
 
 // --- subagents: always the small-model scaffolding, never a main-model profile ---
 if (event === 'SubagentStart') emit(readProfile('subagent'))
+// Any other event fired INSIDE a subagent carries agent_id — the main-model profile is not for it.
+if (data?.agent_id) process.exit(0)
 
 // --- which model is running? ---
 // `model` on SessionStart is optional (and absent on a plain startup), so the transcript is
 // the real source: every assistant message carries `model`, and a mid-session `/model` switch
 // is recorded as a user-side local-command line BEFORE the next assistant turn — reading both
 // and taking whichever is newer means a switch is picked up on the very next prompt, not one turn late.
-const SWITCH_RE = /^<local-command-stdout>Set model to ([\w.-]+)<\/local-command-stdout>$/
+// Observed forms (the text is undocumented and the transcript format is declared unstable, so
+// this is a best-effort fallback): `claude-x` in backticks, the bare id on older builds, and a
+// display name with a trailer — "Set model to `Sonnet 5.5` and saved as your default for new sessions".
+// `[1m]` = context-window suffix.
+const SWITCH_RE = /^<local-command-stdout>Set model to `?([\w .-]+?)(?:\[\w+\])?`?(?: and [^<]*)?<\/local-command-stdout>$/
 
 const modelFromTranscript = (path) => {
   if (!path || !existsSync(path)) return null
@@ -130,16 +138,17 @@ const modelFromTranscript = (path) => {
 // prompt text is the only signal that exists at the moment of the switch; without reading it the
 // new profile lands a full turn late, while the previous model's profile is still live in context.
 const promptSwitch = event === 'UserPromptSubmit' && typeof data?.prompt === 'string'
-  ? data.prompt.match(/^\s*\/model\s+(?:set\s+)?([\w.-]+)\s*$/)?.[1]
+  ? data.prompt.match(/^\s*\/model\s+(?:set\s+)?([\w.-]+)(?:\[\w+\])?\s*$/)?.[1]
   : null
 
-const raw = promptSwitch
+const raw = (event === 'PostModelSwitch' && typeof data?.to_model === 'string' && data.to_model)
+  || promptSwitch
   || (event === 'SessionStart' && typeof data?.model === 'string' && data.model)
   || modelFromTranscript(data?.transcript_path)
 if (!raw) process.exit(0) // fresh session, nothing has run yet — the next prompt resolves it
 
-// claude-haiku-4-5-20251001 → haiku-4-5 · claude-opus-5 → opus-5
-const key = raw.replace(/^claude-/, '').replace(/-\d{8}$/, '')
+// claude-haiku-4-5-20251001 → haiku-4-5 · claude-opus-5 → opus-5 · "Sonnet 5.5" → sonnet-5-5
+const key = raw.replace(/\[\w+\]$/, '').trim().toLowerCase().replace(/[\s.]+/g, '-').replace(/^claude-/, '').replace(/-\d{8}$/, '')
 
 // --- inject once per model, not once per prompt ---
 const stateDir = join(tmpdir(), 'gwork-model-profile')
@@ -148,7 +157,9 @@ let state = {}
 try { state = JSON.parse(readFileSync(stateFile, 'utf8')) } catch { /* fresh */ }
 if (state.model === key) process.exit(0)
 
-const profile = readProfile(key) // unknown model → no file → stay silent rather than guess
+// exact id first, then the family: claude-fable-5-2 → fable-5-2.md → fable-5.md. Without the
+// fallback every minor release silently switches the whole layer off until someone adds a file.
+const profile = readProfile(key) ?? readProfile(key.replace(/-\d+$/, '')) // still no file → stay silent rather than guess
 const previous = state.model
 try { mkdirSync(stateDir, { recursive: true }); writeFileSync(stateFile, JSON.stringify({ model: key })) } catch { /* re-inject next prompt at worst */ }
 if (!profile) process.exit(0)

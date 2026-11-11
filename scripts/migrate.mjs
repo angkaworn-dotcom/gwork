@@ -4,12 +4,18 @@
  *   task-log/YYYY-MM.md   (monthly shards, every original entry + stable anchor ids)
  *   task-log/INDEX.md     (dict: module → entries → BC → one-line gotcha [filled by hand])
  * Never modifies the source file — writes results into task-log/ only.
- * Usage: node migrate.mjs "update task.md"
+ * Refuses to run over an existing task-log/INDEX.md (hand-filled gotchas live there) unless --force.
+ * Usage: node migrate.mjs "update task.md" [--force]
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 
-const src = process.argv[2] ?? 'update task.md'
+const force = process.argv.includes('--force')
+const src = process.argv.slice(2).find(a => a !== '--force') ?? 'update task.md'
+if (existsSync(join('task-log', 'INDEX.md')) && !force) {
+  console.error('migrate: task-log/INDEX.md already exists — a rerun rewrites it and loses every hand-filled gotcha. Pass --force to overwrite.')
+  process.exit(1)
+}
 const raw = readFileSync(src, 'utf8')
 
 // --- 1. split entries by "## " headers ---

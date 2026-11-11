@@ -10,8 +10,18 @@ case "$MSG" in
   "Merge "*|"Revert "*|"fixup! "*|"squash! "*) exit 0 ;;
 esac
 DEFAULT_TYPES='feat|fix|chore|refactor|docs|test|perf|style|ci'
+# Guarded/non-interactive git runners can expose a narrower PATH than the login shell
+# (found in an installed repo): resolve node once, fail loud if it is missing.
+NODE_BIN=$(command -v node 2>/dev/null || true)
+if [ -z "$NODE_BIN" ] && [ -x "$HOME/.local/bin/node" ]; then
+  NODE_BIN="$HOME/.local/bin/node"
+fi
+if [ -z "$NODE_BIN" ]; then
+  echo "commit-msg: node is required to read gwork.json" >&2
+  exit 1
+fi
 # No gwork.json = defaults · present but unparseable = block (broken config must never be silent)
-TYPES=$(node -p "(()=>{try{const c=require(process.cwd()+'/gwork.json');const t=c.commit&&c.commit.types;return Array.isArray(t)&&t.length?t.join('|'):''}catch(e){return e.code==='MODULE_NOT_FOUND'?'':'__BAD__'}})()") || {
+TYPES=$("$NODE_BIN" -p "(()=>{try{const c=require(process.cwd()+'/gwork.json');const t=c.commit&&c.commit.types;return Array.isArray(t)&&t.length?t.join('|'):''}catch(e){return e.code==='MODULE_NOT_FOUND'?'':'__BAD__'}})()") || {
   echo "commit-msg: node failed to run — cannot read gwork.json (broken config must never be silent)" >&2; exit 1
 }
 if [ "$TYPES" = "__BAD__" ]; then

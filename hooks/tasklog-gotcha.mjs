@@ -12,13 +12,15 @@
  *     "hooks": [{ "type": "command", "command": "node \"<ABS_PATH>/tasklog-gotcha.mjs\"" }] } ] }
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { join, dirname, resolve } from 'node:path'
 import { tmpdir, homedir } from 'node:os'
 import { spawnSync } from 'node:child_process'
 
-const ok = (extra) => { console.log(JSON.stringify({
-  hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow',
-    ...(extra ? { additionalContext: extra } : {}) } })); process.exit(0) }
+// Never answer "allow": that is not a neutral pass, it SKIPS the user's permission prompt for
+// the edit. Nothing to say = no output at all; context to add = additionalContext with no
+// permissionDecision, so the normal permission flow still decides.
+const ok = (extra) => { if (extra) console.log(JSON.stringify({
+  hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: extra } })); process.exit(0) }
 const deny = (reason) => { console.log(JSON.stringify({
   hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny',
     permissionDecisionReason: reason } })); process.exit(0) }
@@ -33,14 +35,18 @@ const cwd = data?.cwd ?? process.cwd()
 const sessionId = data?.session_id ?? 'nosession'
 if (!filePath) ok()
 
-// --- find the repo root that holds task-log/INDEX.md (walk up from cwd) ---
-let root = cwd, indexPath = ''
-for (let i = 0; i < 6; i++) {
-  const p = join(root, 'task-log', 'INDEX.md')
-  if (existsSync(p)) { indexPath = p; break }
-  const up = dirname(root); if (up === root) break; root = up
+// --- find the repo root that holds task-log/INDEX.md: walk up from the FILE being edited,
+// then from cwd. The file decides which repo's rules apply — a session started in repo A
+// that edits repo B must get B's gotchas and B's forbidden list, not A's. ---
+const rootOf = (start) => {
+  for (let dir = start; ; ) {
+    if (existsSync(join(dir, 'task-log', 'INDEX.md'))) return dir
+    const up = dirname(dir); if (up === dir) return null; dir = up
+  }
 }
-if (!indexPath) ok()
+const root = rootOf(dirname(resolve(cwd, filePath))) ?? rootOf(cwd)
+if (!root) ok()
+const indexPath = join(root, 'task-log', 'INDEX.md')
 
 // --- sentinel: second channel of the filter stack. Independent of git hooks, so
 // removing core.hooksPath is exactly the tamper this channel catches at edit time.
@@ -60,7 +66,7 @@ if (existsSync(sentinelBin)) {
 
 // --- module key: rules come from gwork.json at the root if present — users edit rules without touching code ---
 // strip the root prefix case-insensitively — on Windows the drive letter case may differ (C:/ vs c:/)
-const fpNorm = filePath.replace(/\\/g, '/')
+const fpNorm = resolve(cwd, filePath).replace(/\\/g, '/') // resolved: a relative file_path must still map to its module
 const rootNorm = root.replace(/\\/g, '/') + '/'
 const rel = fpNorm.toLowerCase().startsWith(rootNorm.toLowerCase())
   ? fpNorm.slice(rootNorm.length)
@@ -124,16 +130,23 @@ if (seen[mod]) okW()
 
 // --- look up the module's row in INDEX ---
 const index = readFileSync(indexPath, 'utf8')
-const row = index.split('\n').find(l => {
-  const c = l.split('|').map(s => s.trim())
-  return c.length >= 5 && c[1] === mod
-})
-if (!row) okW()
-const cols = row.split('|').map(s => s.trim())
-const [, , entries, bc, gotcha] = cols
-const hasBC = bc && bc !== '—'
-const hasGotcha = gotcha && gotcha !== 'TODO' && gotcha !== '—' && gotcha !== '-' && gotcha !== ''
+// ALL rows named for the module, not the first: a real INDEX files several rows under one
+// name, and `.find()` hid every one but the first.
+const rows = index.split('\n')
+  .map(l => l.split(/(?<!\\)\|/).map(s => s.trim()))
+  .filter(c => c.length >= 5 && c[1] === mod)
+if (!rows.length) okW()
+const real = v => v && v !== 'TODO' && v !== '—' && v !== '-'
+const uniq = a => [...new Set(a.filter(real))]
+const bcs = uniq(rows.flatMap(c => c[3].split(/\s+/)))
+const gotchas = uniq(rows.map(c => c[4]))
+const entries = uniq(rows.map(c => c[2])).join(' · ')
+const hasBC = bcs.length > 0, bc = bcs.join(' ')
+const hasGotcha = gotchas.length > 0
 if (!hasBC && !hasGotcha) okW()
+const MAX_SHOWN = 12 // keeps one injection far below the harness's 10,000-character cap
+const gotchaLines = gotchas.slice(0, MAX_SHOWN).map(g => `- Gotcha: ${g}`)
+if (gotchas.length > MAX_SHOWN) gotchaLines.push(`- (+${gotchas.length - MAX_SHOWN} more gotchas for this module in task-log/INDEX.md — grep the module name)`)
 
 seen[mod] = true
 writeFileSync(stateFile, JSON.stringify(seen))
@@ -141,7 +154,7 @@ writeFileSync(stateFile, JSON.stringify(seen))
 const msg = [
   `[task-log] Editing module "${mod}" — history you must know before touching it:`,
   hasBC ? `- Bug classes: ${bc} (details in CLAUDE.md)` : null,
-  hasGotcha ? `- Gotcha: ${gotcha}` : null,
+  ...gotchaLines,
   `- Related entries (open only what you need, never the whole shard): ${entries}`,
 ].filter(Boolean).join('\n')
 okW(msg)

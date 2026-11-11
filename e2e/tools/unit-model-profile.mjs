@@ -179,7 +179,18 @@ check('display-name switch record resolves to the family profile', /scope bounda
 const r24 = run({ hook_event_name: 'PreToolUse', session_id: sid(), cwd: work, agent_id: 'agent-1', transcript_path: t1 })
 check('events inside a subagent get no main-model profile', r24.out === '' && r24.code === 0)
 
-check('no stderr noise in any case', [r1, r2, r3, r4, r5, r6, r7, r9, r10, r11, r13, r14, r15, r16, r17, r18, r19, r20, r21, r22, r23, r24].every(r => !r.err))
+// --- a profile that appears AFTER the first silent look is still delivered (live finding) ---
+// a model no machine has a profile for: the lookup also reads ~/.claude/gwork-profiles
+const lateDir = join(work, 'late-profiles'); mkdirSync(lateDir, { recursive: true })
+const sLate = sid()
+const r25 = run({ hook_event_name: 'SessionStart', session_id: sLate, cwd: work, model: 'claude-zeta-9' }, { GWORK_PROFILES: lateDir })
+writeFileSync(join(lateDir, 'zeta-9.md'), 'LATE PROFILE RULE')
+const r26 = run({ hook_event_name: 'PreToolUse', session_id: sLate, cwd: work, transcript_path: transcript([assistant('claude-zeta-9')]) }, { GWORK_PROFILES: lateDir })
+check('profile added after a silent first look is delivered', r25.out === '' && /LATE PROFILE RULE/.test(r26.ctx) && !/no longer applies/.test(r26.ctx), r26.out.slice(0, 200))
+const r27 = run({ hook_event_name: 'PreToolUse', session_id: sLate, cwd: work, transcript_path: transcript([assistant('claude-zeta-9')]) }, { GWORK_PROFILES: lateDir })
+check('…and then only once', r27.out === '')
+
+check('no stderr noise in any case', [r1, r2, r3, r4, r5, r6, r7, r9, r10, r11, r13, r14, r15, r16, r17, r18, r19, r20, r21, r22, r23, r24, r25, r26, r27].every(r => !r.err))
 
 rmSync(work, { recursive: true, force: true })
 console.log(fail ? `\n${fail} FAILED` : '\nall model-profile cases pass')

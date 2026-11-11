@@ -155,13 +155,17 @@ const stateDir = join(tmpdir(), 'gwork-model-profile')
 const stateFile = join(stateDir, `${data?.session_id ?? 'nosession'}.json`)
 let state = {}
 try { state = JSON.parse(readFileSync(stateFile, 'utf8')) } catch { /* fresh */ }
-if (state.model === key) process.exit(0)
+// Skip only when the profile for this model was actually DELIVERED. The state used to record
+// the model even when no profile file matched; a profile that became available later in the
+// session (a file added, the kit updated) was then never injected — seen live: the state said
+// {"model":"fable-5-2"} and the session ran its whole length with no profile.
+if (state.model === key && state.injected === true) process.exit(0)
 
 // exact id first, then the family: claude-fable-5-2 → fable-5-2.md → fable-5.md. Without the
 // fallback every minor release silently switches the whole layer off until someone adds a file.
 const profile = readProfile(key) ?? readProfile(key.replace(/-\d+$/, '')) // still no file → stay silent rather than guess
-const previous = state.model
-try { mkdirSync(stateDir, { recursive: true }); writeFileSync(stateFile, JSON.stringify({ model: key })) } catch { /* re-inject next prompt at worst */ }
+const previous = state.injected === true ? state.model : undefined // only a profile that was shown can be superseded
+try { mkdirSync(stateDir, { recursive: true }); writeFileSync(stateFile, JSON.stringify({ model: key, injected: Boolean(profile) })) } catch { /* re-inject next prompt at worst */ }
 if (!profile) process.exit(0)
 
 // After a switch the previous model's profile is still sitting in the context window, and the two

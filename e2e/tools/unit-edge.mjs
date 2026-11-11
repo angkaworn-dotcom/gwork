@@ -355,6 +355,22 @@ for (const [label, command] of mustPass) { const r = bash(command); ok(`bash-pas
   r = hook(G, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: forty }, cwd: R, session_id: uid('bl') })
   ok('bash-lessons: forty targets stay inside the budget', contract('PreToolUse', r).length === 0 && ctx(r).length > 0 && ctx(r).length < 4000, `${ctx(r).length} chars`)
 }
+// the repo comes from the TARGET, not from where the session sits: seen live, a session opened
+// outside the repo ran `cd <repo> && echo … > lib/money/x.js` and nothing looked at it
+{
+  const out = mk('bash-outside', { 'a.txt': 'x' }) // no task-log here or above
+  const from = (command, sid = uid('bo')) => hook(G, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command }, cwd: out, session_id: sid })
+  let r = from(`cd ${R} && echo "${BAD}" > lib/money/a.js`)
+  ok('bash-root: cd into the repo from outside, forbidden write is denied', contract('PreToolUse', r).length === 0 && denied(r), r.stdout.slice(0, 160))
+  r = from(`echo "${BAD}" > ${R}/lib/money/a.js`)
+  ok('bash-root: absolute target from outside is denied', contract('PreToolUse', r).length === 0 && denied(r), r.stdout.slice(0, 160))
+  r = from(`cd ${R} && cat > lib/money/a.js <<'EOF'\nexport const d = n => formatMoney(n)\nEOF`)
+  ok('bash-root: a clean write from outside gets the gotcha', contract('PreToolUse', r).length === 0 && !denied(r) && /formatMoney\(\) from lib\/money\/format\.js/.test(ctx(r)), r.stdout.slice(0, 160))
+  r = from(`cd ${R} && echo "${BAD}" > lib/other/a.js`)
+  ok('bash-root: from outside, the pattern in another directory still passes', contract('PreToolUse', r).length === 0 && !denied(r))
+  r = from(`echo "${BAD}" > lib/money/a.js`)
+  ok('bash-root: outside any repo, a matching relative path says nothing', contract('PreToolUse', r).length === 0 && r.stdout.trim() === '', r.stdout.slice(0, 120))
+}
 // documented residue: these write the pattern and are NOT caught — if one starts being caught, move it up
 for (const [label, command] of [
   ['python writes the file', `python3 -c "open('lib/money/a.js','w').write('${BAD}')"`],

@@ -60,7 +60,7 @@ const DEFAULT_MODULES = [
 ]
 let cfg = {}
 if (existsSync('gwork.json')) {
-  try { cfg = JSON.parse(readFileSync('gwork.json', 'utf8')) }
+  try { cfg = JSON.parse(readFileSync('gwork.json', 'utf8').replace(/^\uFEFF/, '')); if (cfg === null || typeof cfg !== 'object' || Array.isArray(cfg)) throw new Error('the top level must be an object') }
   catch (e) { console.error(`migrate: cannot parse gwork.json — ${e.message}`); process.exit(1) }
 }
 const PATH_RE = new RegExp(cfg.pathPattern
@@ -69,7 +69,7 @@ const moduleRules = Array.isArray(cfg.modules) && cfg.modules.length ? cfg.modul
 const moduleOf = p => {
   for (const r of moduleRules) {
     const m = p.match(new RegExp(r.pattern))
-    if (m) return r.name.replace(/\$(\d)/g, (_, i) => m[+i] ?? '')
+    if (m) return String(r.name ?? '').replace(/\$(\d)/g, (_, i) => m[+i] ?? '')
   }
   return 'other'
 }

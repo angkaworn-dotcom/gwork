@@ -49,7 +49,7 @@ if (!EVENTS.has(event)) process.exit(0)
 // re-fires on both and carries `source`, so that's where the state is dropped.
 const stateDirEarly = join(tmpdir(), 'gwork-model-profile')
 if (event === 'SessionStart' && ['clear', 'compact'].includes(data?.source)) {
-  try { rmSync(join(stateDirEarly, `${data?.session_id ?? 'nosession'}.json`), { force: true }) } catch { /* fail-open */ }
+  try { rmSync(join(stateDirEarly, `${(typeof data?.session_id === 'string' && data.session_id ? data.session_id : 'nosession').replace(/[^\w.-]/g, '_').slice(0, 120)}.json`), { force: true }) } catch { /* fail-open */ }
 }
 
 const emit = (text) => {
@@ -60,7 +60,8 @@ const emit = (text) => {
 }
 
 // --- repo root: the directory holding gwork.json or task-log/INDEX.md (walk up from cwd) ---
-const cwd = data?.cwd ?? process.cwd()
+const cwd = typeof data?.cwd === 'string' && data.cwd ? data.cwd : process.cwd()
+const sid = (typeof data?.session_id === 'string' && data.session_id ? data.session_id : 'nosession').replace(/[^\w.-]/g, '_').slice(0, 120) // becomes a file name
 let root = cwd
 for (let i = 0, dir = cwd; i < 6; i++) {
   if (existsSync(join(dir, 'gwork.json')) || existsSync(join(dir, 'task-log', 'INDEX.md'))) { root = dir; break }
@@ -68,13 +69,14 @@ for (let i = 0, dir = cwd; i < 6; i++) {
 }
 
 let cfg = {}
-try { cfg = JSON.parse(readFileSync(join(root, 'gwork.json'), 'utf8')) } catch { /* no config = defaults */ }
+try { cfg = JSON.parse(readFileSync(join(root, 'gwork.json'), 'utf8').replace(/^\uFEFF/, '')) } catch { /* no config = defaults */ }
+if (cfg === null || typeof cfg !== 'object' || Array.isArray(cfg)) cfg = {}
 if (cfg.profiles === false) process.exit(0) // per-repo opt-out
 
 // --- where profiles live: repo override first, then the machine-level copy ---
 const profileDirs = [
   process.env.GWORK_PROFILES,
-  cfg.profilesDir ? (isAbsolute(cfg.profilesDir) ? cfg.profilesDir : join(root, cfg.profilesDir)) : null,
+  typeof cfg.profilesDir === 'string' && cfg.profilesDir ? (isAbsolute(cfg.profilesDir) ? cfg.profilesDir : join(root, cfg.profilesDir)) : null,
   join(root, '.gwork', 'profiles'),
   join(homedir(), '.claude', 'gwork-profiles'),
 ].filter(Boolean)
@@ -88,7 +90,7 @@ const readProfile = (name) => {
 }
 
 // --- subagents: always the small-model scaffolding, never a main-model profile ---
-if (event === 'SubagentStart') emit(readProfile('subagent'))
+if (event === 'SubagentStart') emit(readProfile('subagent')?.slice(0, 9500))
 // Any other event fired INSIDE a subagent carries agent_id — the main-model profile is not for it.
 if (data?.agent_id) process.exit(0)
 
@@ -149,12 +151,15 @@ if (!raw) process.exit(0) // fresh session, nothing has run yet — the next pro
 
 // claude-haiku-4-5-20251001 → haiku-4-5 · claude-opus-5 → opus-5 · "Sonnet 5.5" → sonnet-5-5
 const key = raw.replace(/\[\w+\]$/, '').trim().toLowerCase().replace(/[\s.]+/g, '-').replace(/^claude-/, '').replace(/-\d{8}$/, '')
+// the key becomes a file name: anything that is not a plain model token (`../`, quotes, a 5,000-character id) is no model we know
+if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(key)) process.exit(0)
 
 // --- inject once per model, not once per prompt ---
 const stateDir = join(tmpdir(), 'gwork-model-profile')
-const stateFile = join(stateDir, `${data?.session_id ?? 'nosession'}.json`)
+const stateFile = join(stateDir, `${sid}.json`)
 let state = {}
 try { state = JSON.parse(readFileSync(stateFile, 'utf8')) } catch { /* fresh */ }
+if (state === null || typeof state !== 'object') state = {}
 // Skip only when the profile for this model was actually DELIVERED. The state used to record
 // the model even when no profile file matched; a profile that became available later in the
 // session (a file added, the kit updated) was then never injected — seen live: the state said
@@ -175,4 +180,6 @@ const supersede = previous && previous !== key
   ? ` The gwork profile above for ${previous} no longer applies — this replaces it.`
   : ''
 
-emit(`[gwork] Running on ${raw}.${supersede} Project rules that differ for this model:\n\n${profile}`)
+// the harness caps injected context at 10,000 characters and replaces the rest with a file pointer
+const body = profile.length > 9000 ? profile.slice(0, 9000) + '\n\n[profile truncated at 9,000 characters — shorten the file]' : profile
+emit(`[gwork] Running on ${raw.slice(0, 80)}.${supersede} Project rules that differ for this model:\n\n${body}`)

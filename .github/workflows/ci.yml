@@ -40,3 +40,4 @@ jobs:
 
       - run: node e2e/tools/unit.mjs
       - run: node e2e/tools/unit-model-profile.mjs
+      - run: node e2e/tools/unit-edge.mjs

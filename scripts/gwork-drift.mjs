@@ -15,7 +15,7 @@
  *   exit 0 = every copy matches the kit · 1 = at least one copy is behind, edited or missing
  * GWORK_CLAUDE_HOME overrides ~/.claude (tests, sandboxes).
  */
-import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs'
+import { readFileSync, existsSync, readdirSync, statSync, realpathSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import { createHash } from 'node:crypto'
@@ -51,7 +51,12 @@ const versionsOf = (kitRel) => {
 
 // A shallow kit (CI checkout, `git clone --depth 1`) has no older versions to match against.
 // Calling every differing copy a "local edit" there would be a false alarm, so say what is known.
-const SHALLOW = git(KIT, 'rev-parse', '--is-shallow-repository')?.trim() === 'true'
+// The same holds for a kit that is not a git checkout at all (a copied folder): no history, no verdict.
+// "git works here" is not enough: a copied kit sitting inside some other repository answers every
+// git question with that repository's history. The kit has history only if it is the top of its own checkout.
+const real = (p) => { try { return realpathSync(p) } catch { return p } }
+const kitTop = git(KIT, 'rev-parse', '--show-toplevel')?.trim()
+const SHALLOW = !kitTop || real(kitTop) !== real(KIT) || git(KIT, 'rev-parse', '--is-shallow-repository')?.trim() !== 'false'
 const rows = []
 const compare = (group, kitRel, installed, { optional = false } = {}) => {
   const kit = read(join(KIT, kitRel))
@@ -63,7 +68,7 @@ const compare = (group, kitRel, installed, { optional = false } = {}) => {
   rows.push(old
     ? { group, file: kitRel, state: 'behind', detail: `matches kit ${old}` }
     : SHALLOW
-      ? { group, file: kitRel, state: 'differs', detail: 'kit history is shallow — cannot tell behind from edited (git fetch --unshallow in the kit)' }
+      ? { group, file: kitRel, state: 'differs', detail: 'kit has no full git history — cannot tell behind from edited (use a full clone of the kit)' }
       : { group, file: kitRel, state: 'local edit', detail: 'matches no kit version — upstream it before updating' })
 }
 
@@ -94,8 +99,8 @@ const drift = rows.filter(r => r.state !== 'same')
 // The kit itself can hold work that never left the machine: lessons and fixes written into an
 // installed skill clone and not committed (L-010). Reported, not counted — a kit under
 // development is legitimately dirty.
-const kitDirty = (git(KIT, 'status', '--porcelain') ?? '').split('\n').filter(Boolean).map(l => l.slice(3))
-const kitHead = git(KIT, 'rev-parse', '--short', 'HEAD')?.trim() ?? 'unknown'
+const kitDirty = kitTop && real(kitTop) === real(KIT) ? (git(KIT, 'status', '--porcelain') ?? '').split('\n').filter(Boolean).map(l => l.slice(3)) : []
+const kitHead = (kitTop && real(kitTop) === real(KIT) ? git(KIT, 'rev-parse', '--short', 'HEAD')?.trim() : null) ?? 'no git history'
 if (args.includes('--json')) {
   console.log(JSON.stringify({ kit: KIT, kitHead, repo: repoInstalled && !isKitCheckout ? REPO : null, checked: rows.length, drift, kitDirty }))
 } else {

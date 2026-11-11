@@ -4,6 +4,15 @@ Append-only, newest first. Every entry = a bug the kit hit in a real repo, fixed
 
 Format: `## L-xxx — <one-line symptom>` · date · repo · Root cause · Fix · Harness.
 
+## L-013 — first live check: the hooks work in a real session, and a profile was never delivered because the state said it had been
+
+- **Date:** 2026-11-11 · **Repo:** an e2e sandbox, driven from a real Claude Code session (2.1.309, desktop)
+- **Confirmed live:** `additionalContext` with no `permissionDecision` reaches the model on `PreToolUse` (module gotcha, file-level gotcha, model profile) · the `deny` shape blocks a `Write` that carries a forbidden pattern, and the file is not created · both decisions land in `~/.gwork/log` and `gwork-stats.mjs` reads them back · a minor model revision (`fable-5-2`) receives its family profile.
+- **Symptom found:** the session had run for hours with no model profile, although a matching profile existed.
+- **Root cause:** `model-profile.mjs` recorded the model in its state file even when no profile file matched, then skipped every later event for that model. The profile became available later (the family fallback was added and synced mid-session) and was never injected.
+- **Fix:** the state records whether a profile was delivered; only a delivered profile suppresses the next look, and only a delivered profile is ever announced as superseded. Confirmed live: the next tool call after syncing the fix carried the profile.
+- **Harness:** `node e2e/tools/unit-model-profile.mjs` green twice, with a case for a profile that appears after a silent first look. **Still not checked live:** `SessionStart` output, the `Bash` matcher and `PostModelSwitch` (registered after this session began), and that an edit prompts for permission again.
+
 ## L-012 — a note I added was a false signal; two tools were not built because the data said no
 
 - **Date:** 2026-11-11 · **Repo:** a real INDEX of 500+ rows, measured read-only

@@ -48,6 +48,16 @@ const out = {
   reminders: by('remind-unclosed').length, resets: by('reset-state').length,
   latencyMs: ms.length ? { median: ms[ms.length >> 1], p95: ms[Math.floor(ms.length * 0.95)] } : null,
   filesWithNothingToSay: top(count(passes.filter(e => e.reason === 'no-row'), 'file'), 8),
+  routing: (() => {
+    const med = (a) => { const s = a.filter(Number.isFinite).sort((x, y) => x - y); return s.length ? s[s.length >> 1] : null }
+    const judged = by('route'), done = by('route-result')
+    const perTier = {}
+    for (const t of ['light', 'standard', 'heavy']) {
+      const d = done.filter(e => e.tier === t)
+      perTier[t] = { handedOut: judged.filter(e => e.tier === t).length, finished: d.length, medianTokens: med(d.map(e => e.tokens)), medianToolUses: med(d.map(e => e.toolUses)) }
+    }
+    return { judged: judged.length, verdicts: count(judged, 'verdict'), chosen: count(judged, 'chosen'), perTier }
+  })(),
 }
 if (args.includes('--json')) { console.log(JSON.stringify(out)); process.exit(0) }
 if (!events.length) { console.log(`gwork-stats — no hook events in the last ${days} days for ${out.scope} (log: ${join(HOME, 'log')})`); process.exit(0) }
@@ -59,4 +69,10 @@ console.log(`  denies            forbidden edit ${out.denies.forbiddenEdit} · f
 if (out.deniedPatterns.length) console.log(`  denied patterns   ${out.deniedPatterns.map(([k, v]) => `${k} ×${v}`).join(' · ')}`)
 console.log(`  reminders         ${out.reminders} unclosed-work · ${out.resets} state resets after clear/compact`)
 if (out.latencyMs) console.log(`  hook time         median ${out.latencyMs.median} ms · p95 ${out.latencyMs.p95} ms (inside the hook, excludes node startup)`)
+if (out.routing.judged || Object.values(out.routing.perTier).some(t => t.finished)) {
+  const v = out.routing.verdicts
+  console.log(`  routing           ${out.routing.judged} subagent tasks judged · fits ${v.fits ?? 0} · under-powered ${v.under ?? 0} · over-powered ${v.over ?? 0}`)
+  for (const [t, d] of Object.entries(out.routing.perTier)) if (d.handedOut || d.finished) console.log(`    ${t.padEnd(9)} handed out ${d.handedOut} · finished ${d.finished}${d.medianTokens != null ? ` · median ${d.medianTokens} tokens, ${d.medianToolUses ?? '?'} tool calls` : ''}`)
+  console.log('    (if the tiers do not differ in what they cost, the thresholds in gwork.json → routing need changing)')
+}
 if (out.filesWithNothingToSay.length) console.log(`  edited most with no lesson on record: ${out.filesWithNothingToSay.map(([k, v]) => `${k} ×${v}`).join(' · ')}`)

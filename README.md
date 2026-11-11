@@ -16,6 +16,7 @@ One principle: **any rule that can be checked deterministically becomes a hook/s
 | read gotchas before touching a module or a file — through the edit tools or a shell write | `hooks/tasklog-gotcha.mjs` (PreToolUse) | auto-injected — the AI never has to remember |
 | forbidden pattern staged for commit | `githooks/pre-commit` (check F on the index) | commit rejected |
 | everything above, when the push used `--no-verify` | `templates/gwork-check.yml` (installed with `--ci`, required by the owner) | pull request cannot merge |
+| a subagent task handed to a weaker or far stronger model than its tier | `hooks/model-route.mjs` (PreToolUse on Agent) | said to the agent, or denied once with `routing.mode: "block-once"` |
 | an installed copy behind the kit, or fixed in place | `hooks/tasklog-gotcha.mjs` at session start, once a day | said to the agent — never blocking |
 | forbidden pattern written through the shell (`>`, `tee`, `sed -i`) | `hooks/tasklog-gotcha.mjs` on Bash | command denied — best effort |
 | Evidence / Clarify Early / design decisions belong to the owner / subagents never commit | `CLAUDE.template.md` (prompt) | judgment — can't be automated |

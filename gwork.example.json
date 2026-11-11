@@ -26,6 +26,9 @@
     { "path": "^lib/money/", "pattern": "\\.toFixed\\(", "reason": "money display must use formatMoney() — prod rounding bug" }
   ],
 
+  "$comment_routing": "hooks/model-route.mjs: score a subagent task into a tier and compare with the model chosen. mode: advise (default) | block-once | off. See ADAPT.md for the word lists and thresholds.",
+  "routing": { "mode": "advise", "tiers": { "light": "haiku", "standard": "sonnet", "heavy": "opus" } },
+
   "$comment_driftNotice": "gotcha hook, session start, once a day: say when an installed copy is behind the kit or was edited in place. Default: true.",
   "driftNotice": true,
 

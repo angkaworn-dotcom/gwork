@@ -117,7 +117,7 @@ todo.push('Review, then commit — the installer stages nothing.')
 
 // ============ machine ============
 if (MACHINE) {
-  for (const h of ['tasklog-gotcha.mjs', 'model-profile.mjs']) place('machine', `hooks/${h}`, join(CLAUDE, 'hooks', h))
+  for (const h of ['tasklog-gotcha.mjs', 'model-profile.mjs', 'model-route.mjs']) place('machine', `hooks/${h}`, join(CLAUDE, 'hooks', h))
   for (const f of readdirSync(join(KIT, 'commands')).filter(f => f.endsWith('.md'))) place('machine', `commands/${f}`, join(CLAUDE, 'commands', f))
   for (const f of readdirSync(join(KIT, 'profiles')).filter(f => f.endsWith('.md'))) place('machine', `profiles/${f}`, join(CLAUDE, 'gwork-profiles', f))
 
@@ -148,6 +148,9 @@ if (MACHINE) {
   }
   register('PreToolUse', 'tasklog-gotcha.mjs', { matcher: 'Edit|Write|MultiEdit|Bash', timeout: 15 })
   register('SessionStart', 'tasklog-gotcha.mjs', { timeout: 10 })
+  // routing: judge a subagent's task when it is handed out, record what it cost when it returns
+  register('PreToolUse', 'model-route.mjs', { matcher: 'Agent|Task', timeout: 10 })
+  register('PostToolUse', 'model-route.mjs', { matcher: 'Agent|Task', timeout: 10 })
   for (const ev of ['SessionStart', 'UserPromptSubmit', 'SubagentStart', 'PreToolUse', 'Stop']) register(ev, 'model-profile.mjs', { timeout: 10 })
   // PostModelSwitch exists from Claude Code 2.1.251; an unknown event name in settings.json is not
   // something to gamble on, so it is registered only when the installed version is known to have it

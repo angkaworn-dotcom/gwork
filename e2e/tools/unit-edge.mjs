@@ -447,6 +447,88 @@ for (const ev of ['Notification', 'PreCompact', '', 5, null]) ok(`profile: event
 }
 
 // =====================================================================================
+// 8b. model-route — a task's tier, the advice on a subagent call, and the record of what it cost
+// =====================================================================================
+{
+  const ROUTE = 'hooks/model-route.mjs'
+  const cli = (task, extra = [], cwd = R) => { const r = run(['node', join(KIT, ROUTE), '--task', task, ...extra, '--json'], cwd); let j = null; try { j = JSON.parse(r.stdout) } catch { /* reported by the case */ } return { r, j } }
+  for (const [label, task, tier, model] of [
+    ['a typo', 'fix the typo in lib/greet.js', 'light', 'haiku'],
+    ['docs and a version bump', 'update the README and bump the version', 'light', 'haiku'],
+    ['an ordinary change', 'add subtract(a,b) to lib/math.js', 'standard', 'sonnet'],
+    ['a module with a gotcha', 'change displayPrice in lib/money/display.js to round half-even', 'standard', 'sonnet'],
+    ['a mechanical change in a module with a gotcha', 'rename a variable in lib/money/format.js', 'light', 'haiku'],
+    ['open-ended work', 'investigate why checkout totals drift', 'standard', 'sonnet'],
+    ['risk words and a gotcha', 'migrate the auth schema used by lib/money/format.js', 'heavy', 'opus'],
+    ['non-English task statement', 'แก้คำผิดใน lib/greet.js', 'light', 'haiku'],
+  ]) { const { j } = cli(task); ok(`route: ${label} → ${tier}`, j?.tier === tier && j?.model === model, JSON.stringify(j)) }
+  ok('route: the word "money" inside a path is not a risk word', cli('tidy lib/money/format.js').j?.reasons.every(x => !/mentions "money"/.test(x)))
+  ok('route: a risk word deep in a long brief does not count', cli('add a helper to lib/math.js. ' + 'context '.repeat(120) + 'production auth schema').j?.tier === 'standard')
+  ok('route: ten or more files is breadth', (() => { const { j } = cli('update these', ['--files', ...Array.from({ length: 12 }, (_, i) => `lib/a${i}/x.js`)]); return j?.reasons.some(x => /names 12 files/.test(x)) && j.tier === 'heavy' })())
+  ok('route: backslash paths are read as paths', (() => { const { j } = cli('change rounding in lib\\money\\format.js'); return j?.reasons.some(x => /gotcha is on record for \(shim\) money/.test(x)) && j.reasons.every(x => !/mentions/.test(x)) })())
+  ok('route: --task with no text', run(['node', join(KIT, ROUTE), '--task'], R).status === 1)
+  ok('route: outside a gwork repo', run(['node', join(KIT, ROUTE), '--task', 'x'], tmpdir()).status === 1)
+
+  const HEAVY = 'Migrate the auth schema used by lib/money/format.js and keep every caller working.'
+  const LIGHT = 'Fix the typo in lib/greet.js.'
+  const spawnAgent = (input, extra = {}, env = {}) => hook(ROUTE, { hook_event_name: 'PreToolUse', tool_name: 'Agent', tool_input: input, cwd: R, session_id: uid('rt'), ...extra }, env)
+  const said = (r) => ctx(r)
+  let r = spawnAgent({ description: 'schema work', prompt: HEAVY, model: 'haiku' })
+  ok('route-hook: a weaker model than the tier is called out', contract('PreToolUse', r).length === 0 && /Recommended model: opus; you chose haiku/.test(said(r)) && /a gotcha is on record/.test(said(r)), r.stdout.slice(0, 200))
+  r = spawnAgent({ description: 'typo', prompt: LIGHT })
+  ok('route-hook: no model set on a light task', contract('PreToolUse', r).length === 0 && /haiku is enough; no model was set/.test(said(r)), r.stdout.slice(0, 200))
+  r = spawnAgent({ description: 'typo', prompt: LIGHT, model: 'opus' })
+  ok('route-hook: two steps above the tier', /haiku is enough; you chose opus/.test(said(r)))
+  for (const [label, input] of [
+    ['a fitting model', { description: 'schema work', prompt: HEAVY, model: 'opus' }], ['one step above the tier', { description: 'typo', prompt: LIGHT, model: 'sonnet' }],
+    ['a stronger family than the top tier', { description: 'schema work', prompt: HEAVY, model: 'fable' }], ['no model set on a heavy task', { description: 'schema work', prompt: HEAVY }],
+    ['an unknown model name', { description: 'typo', prompt: LIGHT, model: 'gpt-something' }],
+  ]) { r = spawnAgent(input); ok(`route-hook: ${label} is left alone`, contract('PreToolUse', r).length === 0 && r.stdout.trim() === '', r.stdout.slice(0, 160)) }
+  r = spawnAgent({ description: 'schema work', prompt: HEAVY, subagent_type: 'worker-haiku' })
+  ok('route-hook: the model is read from an agent type name', /you chose worker-haiku/.test(said(r)))
+  for (const [label, payload] of [
+    ['another tool', { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'ls' }, cwd: R }], ['tool_input missing', { hook_event_name: 'PreToolUse', tool_name: 'Agent', cwd: R }],
+    ['prompt is a number', { hook_event_name: 'PreToolUse', tool_name: 'Agent', tool_input: { prompt: 5, model: {} }, cwd: R }], ['empty brief', { hook_event_name: 'PreToolUse', tool_name: 'Task', tool_input: { prompt: '' }, cwd: R }],
+    ['outside any repo', { hook_event_name: 'PreToolUse', tool_name: 'Agent', tool_input: { prompt: LIGHT }, cwd: tmpdir() }], ['null', null], ['an array', []],
+  ]) { r = hook(ROUTE, payload); ok(`route-hook: ${label} says nothing`, contract('PreToolUse', r).length === 0 && r.stdout.trim() === '') }
+  ok('route-hook: garbage stdin', (() => { const x = hook(ROUTE, 'not json', {}, true); return x.status === 0 && !x.stdout.trim() && !x.stderr.trim() })())
+  r = hook(ROUTE, { hook_event_name: 'PreToolUse', tool_name: 'Agent', tool_input: { description: 'schema work', prompt: `In the repository at ${R}, migrate the auth schema used by ${R}/lib/money/format.js.`, model: 'haiku' }, cwd: tmpdir(), session_id: uid('rt') })
+  ok('route-hook: a session opened elsewhere is judged by the repo its brief names', /Recommended model: opus/.test(said(r)), r.stdout.slice(0, 160))
+
+  // configuration
+  const routed = (cfgText, input) => { const repo = mk(`rt-${++seq}`, { 'task-log/INDEX.md': HEADER + '| (shim) pay | [a](task-log/2026-07.md#a) | BC-003 | — |\n', 'gwork.json': cfgText }); return hook(ROUTE, { hook_event_name: 'PreToolUse', tool_name: 'Agent', tool_input: input, cwd: repo, session_id: uid('rc') }) }
+  const payTask = { description: 'pay', prompt: 'Change rounding in lib/pay/x.js.', model: 'haiku' }
+  ok('route-config: a bug class on record raises the tier', /a bug class is on record for \(shim\) pay/.test(said(routed('{}', payTask))))
+  ok('route-config: "routing": false', routed('{"routing":false}', payTask).stdout.trim() === '')
+  ok('route-config: mode off', routed('{"routing":{"mode":"off"}}', payTask).stdout.trim() === '')
+  ok('route-config: an unknown mode means advise', /\[gwork routing\]/.test(said(routed('{"routing":{"mode":"shout"}}', payTask))))
+  ok('route-config: tiers may name your own agents', /Recommended model: senior-sonnet; you chose haiku/.test(said(routed('{"routing":{"tiers":{"standard":"senior-sonnet","heavy":7,"nonsense":"x"}}}', payTask))))
+  ok('route-config: a bad pattern in a word list is dropped, the rest still work', /mentions "frobnicate"/.test(said(routed('{"routing":{"risky":["(","frobnicate"]}}', { prompt: 'frobnicate lib/pay/x.js', model: 'haiku' }))))
+  ok('route-config: junk in routing falls back to defaults', (() => { const x = routed('{"routing":{"tiers":"x","risky":5,"heavyAt":"high","standardAt":null}}', payTask); return contract('PreToolUse', x).length === 0 && /\[gwork routing\]/.test(said(x)) })())
+  ok('route-config: broken gwork.json falls back to defaults', contract('PreToolUse', routed('{{', payTask)).length === 0)
+  {
+    const repo = mk(`rt-${++seq}`, { 'task-log/INDEX.md': HEADER + PAYROW, 'gwork.json': '{"routing":{"mode":"block-once"}}' })
+    const sid = uid('bo'), call = () => hook(ROUTE, { hook_event_name: 'PreToolUse', tool_name: 'Agent', tool_input: { description: 'typo', prompt: LIGHT, model: 'opus' }, cwd: repo, session_id: sid })
+    const first = call(), second = call()
+    ok('route-config: block-once denies the first mismatched call with the recommendation', contract('PreToolUse', first).length === 0 && denied(first) && /Re-issue the call with model: "haiku"/.test(parsed(first).hookSpecificOutput.permissionDecisionReason), first.stdout.slice(0, 200))
+    ok('route-config: …and lets the same call through the second time', contract('PreToolUse', second).length === 0 && second.stdout.trim() === '')
+  }
+
+  // the record of what a subagent cost
+  const rHome = join(EDGE, 'route-home'), sidR = uid('cost')
+  hook(ROUTE, { hook_event_name: 'PreToolUse', tool_name: 'Agent', tool_input: { description: 'schema work', prompt: HEAVY, model: 'haiku' }, cwd: R, session_id: sidR }, { GWORK_HOME: rHome })
+  r = hook(ROUTE, { hook_event_name: 'PostToolUse', tool_name: 'Agent', tool_input: { description: 'schema work', prompt: HEAVY, model: 'haiku' }, tool_response: { totalTokens: 91234, totalToolUseCount: 17, totalDurationMs: 40123, content: 'x' }, cwd: R, session_id: sidR }, { GWORK_HOME: rHome })
+  ok('route-log: PostToolUse says nothing to the model', r.status === 0 && r.stdout.trim() === '' && !r.stderr.trim())
+  hook(ROUTE, { hook_event_name: 'PostToolUse', tool_name: 'Agent', tool_input: { prompt: LIGHT }, tool_response: 'a string, not an object', cwd: R, session_id: sidR }, { GWORK_HOME: rHome })
+  const lines = readFileSync(join(rHome, 'log', `${new Date().toISOString().slice(0, 7)}.jsonl`), 'utf8').trim().split('\n').map(l => JSON.parse(l))
+  ok('route-log: the judgment and the cost are both recorded', lines.some(l => l.action === 'route' && l.verdict === 'under' && l.tier === 'heavy') && lines.some(l => l.action === 'route-result' && l.tokens === 91234 && l.toolUses === 17 && l.tier === 'heavy'), JSON.stringify(lines).slice(0, 260))
+  const stR = run(['node', join(KIT, 'scripts/gwork-stats.mjs'), '--all', '--json'], KIT, { GWORK_HOME: rHome })
+  let sR = {}; try { sR = JSON.parse(stR.stdout) } catch { /* reported below */ }
+  ok('route-log: gwork-stats reports effort per tier', sR.routing?.judged === 1 && sR.routing.verdicts.under === 1 && sR.routing.perTier.heavy.medianTokens === 91234 && sR.routing.perTier.heavy.medianToolUses === 17, stR.stdout.slice(0, 260))
+  ok('route-log: GWORK_LOG=0 writes nothing', (() => { const h = join(EDGE, 'route-nolog'); hook(ROUTE, { hook_event_name: 'PreToolUse', tool_name: 'Agent', tool_input: { prompt: LIGHT }, cwd: R, session_id: uid('nl') }, { GWORK_HOME: h, GWORK_LOG: '0' }); return !existsSync(h) })())
+}
+
+// =====================================================================================
 // 9. tasklog-check — repos and configs nobody plans for
 // =====================================================================================
 const CHECK = join(KIT, 'scripts/tasklog-check.mjs')
@@ -611,7 +693,7 @@ for (const [label, text, want] of [
     const claude = mk(`claude-${++seq}`, { 'settings.json': JSON.stringify({ hooks: { PreToolUse: [null, 5, {}, { hooks: 'x' }, { hooks: [null, { command: 7 }] }, { matcher: 'Bash', hooks: [{ type: 'command', command: 'echo mine' }] }] }, env: { A: '1' } }) })
     const r = inst(newRepo(`inst-${seq}`), claude, '--machine')
     const s = JSON.parse(readFileSync(join(claude, 'settings.json'), 'utf8'))
-    ok('install: junk entries beside ours survive, ours are added', r.status === 0 && s.env.A === '1' && s.hooks.PreToolUse.length === 8 && s.hooks.PreToolUse[5].hooks[0].command === 'echo mine', (r.stdout + r.stderr).slice(-200))
+    ok('install: junk entries beside ours survive, ours are added', r.status === 0 && s.env.A === '1' && s.hooks.PreToolUse.length === 9 && s.hooks.PreToolUse[5].hooks[0].command === 'echo mine', (r.stdout + r.stderr).slice(-200))
   }
   {
     const claude = join(EDGE, 'claude-missing-entirely')

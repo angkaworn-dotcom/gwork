@@ -190,6 +190,39 @@ check('profile added after a silent first look is delivered', r25.out === '' && 
 const r27 = run({ hook_event_name: 'PreToolUse', session_id: sLate, cwd: work, transcript_path: transcript([assistant('claude-zeta-9')]) }, { GWORK_PROFILES: lateDir })
 check('…and then only once', r27.out === '')
 
+// --- one switch, one block: a stale transcript must not undo what PostModelSwitch said (seen live) ---
+const stale = transcript([assistant('claude-fable-5')])   // the tail still names the OLD model
+const fresh = transcript([assistant('claude-fable-5'), assistant('claude-sonnet-5')])
+for (const order of ['switch-first', 'prompt-first']) {
+  const s = sid()
+  run({ hook_event_name: 'PreToolUse', session_id: s, cwd: work, transcript_path: stale })   // session starts on fable
+  const sw = () => run({ hook_event_name: 'PostModelSwitch', session_id: s, cwd: work, from_model: 'claude-fable-5', to_model: 'claude-sonnet-5', source: 'sdk' })
+  const up = () => run({ hook_event_name: 'UserPromptSubmit', session_id: s, cwd: work, prompt: 'hello', transcript_path: stale })
+  const [a, b] = order === 'switch-first' ? [sw(), up()] : [up(), sw()]
+  const tool = run({ hook_event_name: 'PreToolUse', session_id: s, cwd: work, transcript_path: fresh })
+  const stop = run({ hook_event_name: 'Stop', session_id: s, cwd: work, transcript_path: fresh })
+  const blocks = [a, b, tool, stop].filter(r => r.out)
+  check(`one switch, one block (${order})`, blocks.length === 1 && /scope boundaries/.test(blocks[0].ctx) && /fable-5 no longer applies/.test(blocks[0].ctx) && [a, b, tool, stop].every(r => !/Running on claude-fable-5\b/.test(r.ctx)), blocks.map(r => r.ctx.slice(0, 60)).join(' || '))
+  // …and a second switch, back again, is announced once too
+  const back = [
+    run({ hook_event_name: 'PostModelSwitch', session_id: s, cwd: work, from_model: 'claude-sonnet-5', to_model: 'claude-fable-5', source: 'sdk' }),
+    run({ hook_event_name: 'UserPromptSubmit', session_id: s, cwd: work, prompt: 'hello', transcript_path: fresh }),   // tail now names sonnet: stale again
+    run({ hook_event_name: 'PreToolUse', session_id: s, cwd: work, transcript_path: transcript([assistant('claude-sonnet-5'), assistant('claude-fable-5')]) }),
+  ].filter(r => r.out)
+  check(`switching back is one block too (${order})`, back.length === 1 && /is your memory/.test(back[0].ctx) && /sonnet-5 no longer applies/.test(back[0].ctx), back.map(r => r.ctx.slice(0, 60)).join(' || '))
+}
+// without PostModelSwitch (an older harness) the transcript is still believed
+const sOld = sid()
+run({ hook_event_name: 'PreToolUse', session_id: sOld, cwd: work, transcript_path: stale })
+const rOld = run({ hook_event_name: 'PreToolUse', session_id: sOld, cwd: work, transcript_path: fresh })
+check('no PostModelSwitch ever seen: the transcript still announces a change', /scope boundaries/.test(rOld.ctx), rOld.out.slice(0, 120))
+// after /clear the authority is forgotten along with everything else
+const sClr = sid()
+run({ hook_event_name: 'PostModelSwitch', session_id: sClr, cwd: work, to_model: 'claude-sonnet-5' })
+run({ hook_event_name: 'SessionStart', session_id: sClr, cwd: work, source: 'clear' })
+const rClr = run({ hook_event_name: 'PreToolUse', session_id: sClr, cwd: work, transcript_path: stale })
+check('after /clear the transcript is believed again', /is your memory/.test(rClr.ctx), rClr.out.slice(0, 120))
+
 check('no stderr noise in any case', [r1, r2, r3, r4, r5, r6, r7, r9, r10, r11, r13, r14, r15, r16, r17, r18, r19, r20, r21, r22, r23, r24, r25, r26, r27].every(r => !r.err))
 
 rmSync(work, { recursive: true, force: true })

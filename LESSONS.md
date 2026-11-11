@@ -4,6 +4,16 @@ Append-only, newest first. Every entry = a bug the kit hit in a real repo, fixed
 
 Format: `## L-xxx — <one-line symptom>` · date · repo · Root cause · Fix · Harness.
 
+## L-012 — a note I added was a false signal; two tools were not built because the data said no
+
+- **Date:** 2026-11-11 · **Repo:** a real INDEX of 500+ rows, measured read-only
+- **Symptom:** the checker printed "31 modules hold 2+ gotchas and no BC — a lesson that repeats belongs in CLAUDE.md". It read as 31 unpromoted repeats.
+- **Root cause:** the note counted lessons per module and called that repetition. Measured: the rows were distinct lessons. Character-trigram overlap of half or more between two gotchas occurred **zero** times in the whole INDEX, within a module or across it.
+- **Fix:** the note now fires only when two rows of one module carry nearly the same text and neither has a BC. On the same INDEX it is silent, which is the correct answer.
+- **Not built, on the same measurement:** a BC-promotion tool (nothing was repeating, so there was nothing to promote) and an INDEX tidy tool (no duplicate rows, no duplicate links, a median of one link per row; capping links would save 10%). Both were on the list of ideas; neither had evidence.
+- **Built instead:** a session-start notice, once a day, when an installed copy is behind or edited in place or the kit holds uncommitted files — stale copies and unpushed fixes were found five times in one day and nobody had been told · `templates/gwork-check.yml` with `gwork-install.mjs --ci`, the server-side check that `git push --no-verify` cannot skip.
+- **Harness:** `node e2e/tools/unit.mjs` 114/114. The workflow template parses as YAML and its steps were exercised locally (detached HEAD with `GWORK_BASE`); it has not run on a GitHub runner in an installed repo.
+
 ## L-011 — check F and the edit hook read the same rule with two different regex engines
 
 - **Date:** 2026-11-11 · **Repo:** gwork itself (gate-precision pass)

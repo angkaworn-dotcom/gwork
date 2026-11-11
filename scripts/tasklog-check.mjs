@@ -180,7 +180,10 @@ if (STAGED) {
 // Baseline: @{upstream} of the current branch, else origin/<branch>. No baseline
 // (no remote, unborn branch, first push) = both checks skip: there is nothing to shrink from.
 const OWNER_TRAILER = /^Gwork-Owner-Approved:/m
-let base = git('rev-parse', '--verify', '--quiet', '@{upstream}')?.trim()
+// GWORK_BASE: an explicit baseline for places with no upstream branch — a CI checkout is a
+// detached HEAD, where G and H would otherwise skip (templates/gwork-check.yml sets it).
+let base = process.env.GWORK_BASE && git('rev-parse', '--verify', '--quiet', `${process.env.GWORK_BASE}^{commit}`) ? process.env.GWORK_BASE : ''
+if (!base) base = git('rev-parse', '--verify', '--quiet', '@{upstream}')?.trim()
 if (!base) {
   const branch = git('rev-parse', '--abbrev-ref', 'HEAD')?.trim()
   if (branch && branch !== 'HEAD' && git('rev-parse', '--verify', '--quiet', `origin/${branch}`)) base = `origin/${branch}`
@@ -285,19 +288,23 @@ function reachabilityNote() {
     names.add(c[1])
   }
   const dead = files ? [...names].filter(n => !produced.has(n)) : []
-  // Same spirit: "a gotcha that repeats becomes a BC" is a prompt-only rule, and in the field
-  // it never fired. Count modules holding 2+ distinct gotchas with no BC on any of their rows.
+  // "A gotcha that repeats becomes a BC" is a prompt-only rule. Counting modules with 2+ gotchas
+  // (the first version of this note) was a false signal: measured on a real INDEX of 500+ rows,
+  // those were distinct lessons, and almost none repeated. A repeat is two rows of one module
+  // saying nearly the same thing — character-trigram overlap of half or more — with no BC.
+  const tri = (t) => { const s = t.toLowerCase().replace(/\s+/g, ' '), set = new Set(); for (let i = 0; i < s.length - 2; i++) set.add(s.slice(i, i + 3)); return set }
+  const alike = (a, b) => { let n = 0; for (const x of a) if (b.has(x)) n++; return n / (a.size + b.size - n) >= 0.5 }
   const perMod = new Map()
   for (const line of index.split('\n')) {
     const c = cells(line)
     if (c.length < 5 || c[1] === 'Module' || /^-+$/.test(c[1])) continue
-    const m = perMod.get(c[1]) ?? { gotchas: new Set(), bc: false }
-    if (c[4] && c[4] !== 'TODO' && c[4] !== '—' && c[4] !== '-') m.gotchas.add(c[4])
+    const m = perMod.get(c[1]) ?? { tris: [], bc: false }
+    if (c[4] && c[4] !== 'TODO' && c[4] !== '—' && c[4] !== '-' && c[4].length >= 12) m.tris.push(tri(c[4]))
     if (c[3] && c[3] !== '—') m.bc = true
     perMod.set(c[1], m)
   }
-  const unpromoted = [...perMod].filter(([, m]) => m.gotchas.size >= 2 && !m.bc).sort((a, b) => b[1].gotchas.size - a[1].gotchas.size)
-  if (unpromoted.length) console.log(`  note: ${unpromoted.length} modules hold 2+ gotchas and no BC — a lesson that repeats belongs in CLAUDE.md as a BC (${unpromoted.slice(0, 3).map(([n, m]) => `${n} ×${m.gotchas.size}`).join(', ')}${unpromoted.length > 3 ? ', …' : ''})`)
+  const repeating = [...perMod].filter(([, m]) => !m.bc && m.tris.some((a, i) => m.tris.some((b, k) => k > i && alike(a, b)))).map(([n]) => n)
+  if (repeating.length) console.log(`  note: ${repeating.length} module(s) carry the same lesson on more than one row with no BC — a lesson that repeats belongs in CLAUDE.md as a bug class (${repeating.slice(0, 3).join(', ')}${repeating.length > 3 ? ', …' : ''})`)
   if (dead.length) console.log(`  note: ${dead.length} of ${names.size} INDEX module names are produced by no tracked file under gwork.json → modules — the hook reaches them only through entries that name the edited file (${dead.slice(0, 3).join(', ')}${dead.length > 3 ? ', …' : ''})`)
 }
 

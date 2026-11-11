@@ -103,6 +103,7 @@ if (EVENT === 'SessionStart') {
     try { rmSync(stateFile, { force: true }) } catch { /* fail-open */ }
     log('reset-state', { source: data.source })
   }
+  const notes = []
   // Work that was committed but never closed out into the task-log: say so once, at the start,
   // where it costs no extra turn (a Stop-time reminder would re-run the model every time).
   const limit = cfg.tasklog?.unclosedCommits ?? 3
@@ -112,10 +113,42 @@ if (EVENT === 'SessionStart') {
     const n = last ? Number(git('rev-list', '--count', `${last.split(' ')[0]}..HEAD`)) : 0
     if (n >= limit) {
       log('remind-unclosed', { commits: n })
-      ok(`[task-log] ${n} commits since the last task-log entry (${last.split(' ')[1]}) have not been closed out. If that work is finished, close it out first (/gwork-log) — the lessons are freshest now and the next push needs the entry anyway.`)
+      notes.push(`[task-log] ${n} commits since the last task-log entry (${last.split(' ')[1]}) have not been closed out. If that work is finished, close it out first (/gwork-log) — the lessons are freshest now and the next push needs the entry anyway.`)
     }
   }
-  ok()
+  // Copies that fell behind the kit, or were fixed in place, or a kit holding uncommitted work:
+  // each of these went unnoticed for weeks in the field because the drift detector only runs
+  // when someone asks (L-008, L-010). Ask once a day per repo, and speak only when there is
+  // something to say. Off: gwork.json "driftNotice": false.
+  if (cfg.driftNotice !== false && data?.source !== 'compact') {
+    try {
+      const kit = process.env.GWORK_KIT ?? join(homedir(), '.claude', 'skills', 'gwork')
+      const tool = join(kit, 'scripts', 'gwork-drift.mjs')
+      const stamp = join(HOME, 'drift', `${Buffer.from(root).toString('base64url').slice(-48)}.day`)
+      const today = new Date().toISOString().slice(0, 10)
+      let lastDay = ''
+      try { lastDay = readFileSync(stamp, 'utf8') } catch { /* never checked */ }
+      if (existsSync(tool) && lastDay !== today) {
+        mkdirSync(join(HOME, 'drift'), { recursive: true })
+        writeFileSync(stamp, today)
+        const r = spawnSync('node', [tool, '--repo', root, '--json'], { encoding: 'utf8', timeout: 8000 })
+        const j = JSON.parse(r.stdout)
+        const count = (st) => j.drift.filter(d => d.state === st).length
+        const parts = [
+          count('behind') ? `${count('behind')} behind the kit` : null,
+          count('local edit') ? `${count('local edit')} edited in place (a fix the kit never received)` : null,
+          count('differs') ? `${count('differs')} differing` : null,
+          count('missing') + count('not executable') ? `${count('missing') + count('not executable')} missing or not executable` : null,
+        ].filter(Boolean)
+        const dirty = (j.kitDirty ?? []).length
+        if (parts.length || dirty) {
+          log('notice-drift', { drift: j.drift.length, kitDirty: dirty })
+          notes.push(`[gwork] ${parts.length ? `installed copies: ${parts.join(', ')}. ` : ''}${dirty ? `The kit at ${kit} has ${dirty} uncommitted file(s) — a lesson or fix written there reaches nobody until it is committed and pushed. ` : ''}Tell the owner; /gwork-update shows the detail. (Checked once a day.)`)
+        }
+      }
+    } catch { /* a drift check that fails must never get in the way of a session */ }
+  }
+  ok(notes.join('\n\n') || undefined)
 }
 
 // ============ Bash: a shell write of forbidden content ============

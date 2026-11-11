@@ -145,7 +145,16 @@ if (cmd === 'hash') {
 } else if (cmd === 'journal') {
   console.log(existsSync(JOURNAL) ? readFileSync(JOURNAL, 'utf8').trim() : '(empty)')
 } else if (cmd === 'verify') {
-  if (!existsSync(SNAP)) { if (!has('json')) console.log('sentinel: no snapshot for this repo — not installed, nothing to verify'); else console.log('{"installed":false}'); process.exit(0) }
+  if (!existsSync(SNAP)) {
+    // The journal outlives the snapshot: if it records an init/update, the snapshot was
+    // deleted — otherwise `rm <snapshot>` would silence both channels without a trace.
+    const wasInstalled = existsSync(JOURNAL) && /"action":"(?:init|update)"/.test(readFileSync(JOURNAL, 'utf8'))
+    if (!wasInstalled) { if (!has('json')) console.log('sentinel: no snapshot for this repo — not installed, nothing to verify'); else console.log('{"installed":false}'); process.exit(0) }
+    const machinery = ['snapshot: DELETED (the journal shows this repo was snapshotted)']
+    if (has('json')) console.log(JSON.stringify({ installed: true, ok: false, machinery, guards: [] }))
+    else { console.error('sentinel TAMPER (machinery):'); console.error('  ' + machinery[0]); console.error('  Owner: re-run init to snapshot again, or delete the journal too to uninstall') }
+    process.exit(2)
+  }
   const old = JSON.parse(readFileSync(SNAP, 'utf8')).state
   const d = diffState(old, currentState())
   const code = d.machinery.length ? 2 : d.guardsChanged.length ? 3 : 0

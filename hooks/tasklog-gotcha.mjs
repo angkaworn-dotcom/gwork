@@ -12,7 +12,7 @@
  *     "hooks": [{ "type": "command", "command": "node \"<ABS_PATH>/tasklog-gotcha.mjs\"" }] } ] }
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { join, dirname, resolve } from 'node:path'
 import { tmpdir, homedir } from 'node:os'
 import { spawnSync } from 'node:child_process'
 
@@ -33,14 +33,18 @@ const cwd = data?.cwd ?? process.cwd()
 const sessionId = data?.session_id ?? 'nosession'
 if (!filePath) ok()
 
-// --- find the repo root that holds task-log/INDEX.md (walk up from cwd) ---
-let root = cwd, indexPath = ''
-for (let i = 0; i < 6; i++) {
-  const p = join(root, 'task-log', 'INDEX.md')
-  if (existsSync(p)) { indexPath = p; break }
-  const up = dirname(root); if (up === root) break; root = up
+// --- find the repo root that holds task-log/INDEX.md: walk up from the FILE being edited,
+// then from cwd. The file decides which repo's rules apply — a session started in repo A
+// that edits repo B must get B's gotchas and B's forbidden list, not A's. ---
+const rootOf = (start) => {
+  for (let dir = start; ; ) {
+    if (existsSync(join(dir, 'task-log', 'INDEX.md'))) return dir
+    const up = dirname(dir); if (up === dir) return null; dir = up
+  }
 }
-if (!indexPath) ok()
+const root = rootOf(dirname(resolve(cwd, filePath))) ?? rootOf(cwd)
+if (!root) ok()
+const indexPath = join(root, 'task-log', 'INDEX.md')
 
 // --- sentinel: second channel of the filter stack. Independent of git hooks, so
 // removing core.hooksPath is exactly the tamper this channel catches at edit time.
@@ -60,7 +64,7 @@ if (existsSync(sentinelBin)) {
 
 // --- module key: rules come from gwork.json at the root if present — users edit rules without touching code ---
 // strip the root prefix case-insensitively — on Windows the drive letter case may differ (C:/ vs c:/)
-const fpNorm = filePath.replace(/\\/g, '/')
+const fpNorm = resolve(cwd, filePath).replace(/\\/g, '/') // resolved: a relative file_path must still map to its module
 const rootNorm = root.replace(/\\/g, '/') + '/'
 const rel = fpNorm.toLowerCase().startsWith(rootNorm.toLowerCase())
   ? fpNorm.slice(rootNorm.length)

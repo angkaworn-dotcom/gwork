@@ -20,6 +20,7 @@
  * Fail-open everywhere: a missing profile, an unreadable transcript or a broken config
  * must never block a prompt. Unknown model = inject nothing (never guess a profile —
  * pushing small-model scaffolding into a new large model is worse than staying silent).
+ * A minor revision is not an unknown model: fable-5-2 with no fable-5-2.md reads fable-5.md.
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync, openSync, readSync, closeSync, rmSync } from 'node:fs'
 import { join, dirname, isAbsolute } from 'node:path'
@@ -93,7 +94,8 @@ if (event === 'SubagentStart') emit(readProfile('subagent'))
 // the real source: every assistant message carries `model`, and a mid-session `/model` switch
 // is recorded as a user-side local-command line BEFORE the next assistant turn — reading both
 // and taking whichever is newer means a switch is picked up on the very next prompt, not one turn late.
-const SWITCH_RE = /^<local-command-stdout>Set model to ([\w.-]+)<\/local-command-stdout>$/
+// the id is printed in backticks by current harness builds, bare by older ones; `[1m]` = context-window suffix
+const SWITCH_RE = /^<local-command-stdout>Set model to `?([\w.-]+)(?:\[\w+\])?`?<\/local-command-stdout>$/
 
 const modelFromTranscript = (path) => {
   if (!path || !existsSync(path)) return null
@@ -130,7 +132,7 @@ const modelFromTranscript = (path) => {
 // prompt text is the only signal that exists at the moment of the switch; without reading it the
 // new profile lands a full turn late, while the previous model's profile is still live in context.
 const promptSwitch = event === 'UserPromptSubmit' && typeof data?.prompt === 'string'
-  ? data.prompt.match(/^\s*\/model\s+(?:set\s+)?([\w.-]+)\s*$/)?.[1]
+  ? data.prompt.match(/^\s*\/model\s+(?:set\s+)?([\w.-]+)(?:\[\w+\])?\s*$/)?.[1]
   : null
 
 const raw = promptSwitch
@@ -139,7 +141,7 @@ const raw = promptSwitch
 if (!raw) process.exit(0) // fresh session, nothing has run yet — the next prompt resolves it
 
 // claude-haiku-4-5-20251001 → haiku-4-5 · claude-opus-5 → opus-5
-const key = raw.replace(/^claude-/, '').replace(/-\d{8}$/, '')
+const key = raw.replace(/\[\w+\]$/, '').replace(/^claude-/, '').replace(/-\d{8}$/, '')
 
 // --- inject once per model, not once per prompt ---
 const stateDir = join(tmpdir(), 'gwork-model-profile')
@@ -148,7 +150,9 @@ let state = {}
 try { state = JSON.parse(readFileSync(stateFile, 'utf8')) } catch { /* fresh */ }
 if (state.model === key) process.exit(0)
 
-const profile = readProfile(key) // unknown model → no file → stay silent rather than guess
+// exact id first, then the family: claude-fable-5-2 → fable-5-2.md → fable-5.md. Without the
+// fallback every minor release silently switches the whole layer off until someone adds a file.
+const profile = readProfile(key) ?? readProfile(key.replace(/-\d+$/, '')) // still no file → stay silent rather than guess
 const previous = state.model
 try { mkdirSync(stateDir, { recursive: true }); writeFileSync(stateFile, JSON.stringify({ model: key })) } catch { /* re-inject next prompt at worst */ }
 if (!profile) process.exit(0)

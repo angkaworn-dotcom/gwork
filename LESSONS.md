@@ -4,6 +4,14 @@ Append-only, newest first. Every entry = a bug the kit hit in a real repo, fixed
 
 Format: `## L-xxx — <one-line symptom>` · date · repo · Root cause · Fix · Harness.
 
+## L-006 — on Linux/macOS every git gate is off: the hooks ship without the executable bit
+
+- **Date:** 2026-11-11 · **Repo:** gwork itself (first clone on Linux)
+- **Symptom:** `node e2e/tools/unit.mjs` → `FAIL sentinel-prepush-blocks`; a real `git push` printed only `hint: The 'githooks/pre-push' hook was ignored because it's not set as executable` and went through. commit-msg was skipped the same way — no tsc, no tasklog-check, no sentinel at push time.
+- **Root cause:** `githooks/*` were committed as mode `100644` (authored on Windows, where the bit does not exist and git runs hooks regardless). Install copied them as-is, and no step set or checked the bit.
+- **Fix:** mode `100755` in the index for both hooks · install step 2 (SKILL.md, README) now runs `chmod +x githooks/*` and checks `git ls-files -s githooks` · unit case `githooks-executable`.
+- **Harness:** `node e2e/tools/unit.mjs` 32/32 (was 17/18 on Linux). Same pass added: pre-push blocks a pushed commit that is neither HEAD nor already on a remote, tasklog-check calls git with argv instead of a shell string, check G attributes the owner trailer per commit instead of to the last commit on the file, both gotcha hooks resolve the repo from the edited file before cwd, sentinel treats a deleted snapshot as tamper, check C counts text behind an escaped `\|`, migrate refuses to overwrite an existing INDEX, model-profile falls back from a minor revision to its family profile (current ids such as `claude-fable-5-2` matched no file, so nothing was ever injected).
+
 ## L-005 — a `/model` switch is not in the transcript when UserPromptSubmit fires
 
 - **Date:** 2026-07-27 · **Repo:** gwork itself (model-profile hook, first live use)

@@ -2,6 +2,20 @@
 # pre-push — a real block, not a polite request (install: git config core.hooksPath githooks)
 # Edit the check list at gwork.json → prepush (array of commands — run in order, any failure blocks the push)
 set -e
+# Every check below reads the working tree / HEAD. A pushed commit that is neither HEAD nor
+# already on a remote would go out unchecked (`git push origin other-branch`) — block it.
+# git feeds one "<local ref> <local sha> <remote ref> <remote sha>" line per pushed ref.
+if [ ! -t 0 ]; then
+  HEAD_SHA=$(git rev-parse --verify --quiet HEAD || echo none)
+  while read -r lref lsha _rref _rsha; do
+    case "$lsha" in ''|*[!0]*) ;; *) continue ;; esac # all zeros = ref deletion
+    c=$(git rev-parse --verify --quiet "$lsha^{commit}") || continue # peels annotated tags; non-commit = nothing to check
+    [ "$c" = "$HEAD_SHA" ] && continue
+    [ -n "$(git for-each-ref --count=1 --contains "$c" refs/remotes)" ] && continue # nothing new leaves the machine
+    echo "[pre-push] BLOCKED — $lref is not the checked-out commit, so the checks cannot vouch for it. Check it out and push from there." >&2
+    exit 1
+  done
+fi
 # sentinel (if installed): the enforcement machinery itself must match the owner snapshot
 SENTINEL="${GWORK_HOME:-$HOME/.gwork}/bin/gwork-sentinel.mjs"
 if [ -f "$SENTINEL" ]; then

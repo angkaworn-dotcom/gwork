@@ -148,7 +148,18 @@ writeFileSync(join(ovRepo, 'myprofiles', 'opus-5.md'), 'REPO OVERRIDE RULE')
 const r16 = run({ hook_event_name: 'SessionStart', session_id: sid(), cwd: ovRepo, model: 'claude-opus-5' }, { GWORK_PROFILES: '' })
 check('repo profilesDir overrides the machine copy', /REPO OVERRIDE RULE/.test(r16.ctx), r16.out.slice(0, 200))
 
-check('no stderr noise in any case', [r1, r2, r3, r4, r5, r6, r7, r9, r10, r11, r13, r14, r15, r16].every(r => !r.err))
+// --- minor revisions: a release with no profile of its own reads its family's ---
+const r17 = run({ hook_event_name: 'SessionStart', session_id: sid(), cwd: work, model: 'claude-fable-5-2' })
+check('minor revision falls back to the family profile', /is your memory/.test(r17.ctx) && /claude-fable-5-2/.test(r17.ctx), r17.out.slice(0, 200))
+const r18 = run({ hook_event_name: 'SessionStart', session_id: sid(), cwd: work, model: 'claude-haiku-4-5-20251001' })
+check('exact profile still wins over the family fallback', /haiku|small/i.test(r18.ctx) && !/is your memory/.test(r18.ctx), r18.out.slice(0, 200))
+const r19 = run({ hook_event_name: 'SessionStart', session_id: sid(), cwd: work, model: 'claude-opus-5[1m]' })
+check('[1m] context suffix is not part of the model key', /verification layer/.test(r19.ctx), r19.out.slice(0, 200))
+const t20 = transcript([assistant('claude-opus-5'), switched('`claude-fable-5-2`')])
+const r20 = run({ hook_event_name: 'PreToolUse', session_id: sid(), cwd: work, transcript_path: t20 })
+check('backticked id in the switch record is still a switch', /is your memory/.test(r20.ctx), r20.out.slice(0, 200))
+
+check('no stderr noise in any case', [r1, r2, r3, r4, r5, r6, r7, r9, r10, r11, r13, r14, r15, r16, r17, r18, r19, r20].every(r => !r.err))
 
 rmSync(work, { recursive: true, force: true })
 console.log(fail ? `\n${fail} FAILED` : '\nall model-profile cases pass')
